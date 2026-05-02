@@ -106,6 +106,24 @@ PY
 `UsiProcess(command=[...])` can also wrap an external USI engine command. A
 read timeout is applied so a non-responsive engine does not hang the runner.
 
+## External Engine Evaluation
+
+Any USI-compatible engine can be used as the opponent process. For example,
+after preparing a YaneuraOu executable:
+
+```python
+from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
+from shogi_arena_agent.usi import UsiEngine
+
+evaluation = evaluate_player_against_usi_engine(
+    UsiEngine(),
+    ["/path/to/YaneuraOu"],
+    game_count=2,
+    max_plies=64,
+)
+print(evaluation)
+```
+
 ## Match Log Smoke
 
 ```sh

@@ -1,6 +1,7 @@
 import unittest
+import sys
 
-from shogi_arena_agent.match_evaluation import evaluate_player_against_baseline
+from shogi_arena_agent.match_evaluation import evaluate_player_against_baseline, evaluate_player_against_usi_engine
 from shogi_arena_agent.usi import UsiEngine
 
 
@@ -15,6 +16,18 @@ class MatchEvaluationTest(unittest.TestCase):
         self.assertEqual(evaluation.average_plies, 4.0)
         self.assertEqual(evaluation.illegal_move_count, 0)
         self.assertEqual(len(evaluation.results), 2)
+
+    def test_evaluates_player_against_external_usi_engine(self) -> None:
+        evaluation = evaluate_player_against_usi_engine(
+            UsiEngine(),
+            [sys.executable, "-m", "shogi_arena_agent"],
+            game_count=2,
+            max_plies=4,
+        )
+
+        self.assertEqual(evaluation.game_count, 2)
+        self.assertEqual(evaluation.end_reasons, {"max_plies": 2})
+        self.assertEqual(evaluation.illegal_move_count, 0)
 
 
 if __name__ == "__main__":
