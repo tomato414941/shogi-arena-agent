@@ -29,6 +29,33 @@ class MatchEvaluationTest(unittest.TestCase):
         self.assertEqual(evaluation.end_reasons, {"max_plies": 2})
         self.assertEqual(evaluation.illegal_move_count, 0)
 
+    def test_evaluates_external_engine_with_custom_go_command(self) -> None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "for line in sys.stdin:\n"
+                "    line = line.strip()\n"
+                "    if line == 'usi': print('usiok', flush=True)\n"
+                "    elif line == 'isready': print('readyok', flush=True)\n"
+                "    elif line == 'go nodes 1': print('bestmove 7g7f', flush=True)\n"
+                "    elif line.startswith('go'): print('bestmove resign', flush=True)\n"
+                "    elif line == 'quit': break\n"
+            ),
+        ]
+
+        evaluation = evaluate_player_against_usi_engine(
+            UsiEngine(),
+            command,
+            game_count=1,
+            max_plies=1,
+            engine_go_command="go nodes 1",
+        )
+
+        self.assertEqual(evaluation.game_count, 1)
+        self.assertEqual(evaluation.illegal_move_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

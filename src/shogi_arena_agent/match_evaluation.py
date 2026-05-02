@@ -46,6 +46,7 @@ def evaluate_player_against_usi_engine(
     *,
     game_count: int = 2,
     max_plies: int = 64,
+    engine_go_command: str = "go btime 0 wtime 0",
     read_timeout_seconds: float = 5.0,
 ) -> MatchEvaluation:
     if game_count <= 0:
@@ -53,7 +54,11 @@ def evaluate_player_against_usi_engine(
 
     results: list[LocalMatchResult] = []
     for game_index in range(game_count):
-        with UsiProcess(command=engine_command, read_timeout_seconds=read_timeout_seconds) as external_engine:
+        with UsiProcess(
+            command=engine_command,
+            go_command=engine_go_command,
+            read_timeout_seconds=read_timeout_seconds,
+        ) as external_engine:
             if game_index % 2 == 0:
                 result = play_local_match(black=player, white=external_engine, max_plies=max_plies)
             else:

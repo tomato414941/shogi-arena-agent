@@ -9,8 +9,17 @@ from types import TracebackType
 
 
 class UsiProcess:
-    def __init__(self, command: Sequence[str] | None = None, *, read_timeout_seconds: float = 5.0) -> None:
+    def __init__(
+        self,
+        command: Sequence[str] | None = None,
+        *,
+        go_command: str = "go btime 0 wtime 0",
+        read_timeout_seconds: float = 5.0,
+    ) -> None:
         self.command = list(command or [sys.executable, "-m", "shogi_arena_agent"])
+        if not go_command.startswith("go"):
+            raise ValueError("go_command must start with 'go'")
+        self.go_command = go_command
         self.read_timeout_seconds = read_timeout_seconds
         self.process: subprocess.Popen[str] | None = None
         self._stdout_lines: queue.Queue[str] = queue.Queue()
@@ -50,7 +59,7 @@ class UsiProcess:
         self._send(command)
 
     def go(self) -> str:
-        self._send("go btime 0 wtime 0")
+        self._send(self.go_command)
         return self._read_bestmove()
 
     def close(self) -> None:
