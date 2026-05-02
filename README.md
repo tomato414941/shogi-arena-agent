@@ -70,6 +70,13 @@ by `intelligence-representation` and ranks the current legal moves. The import i
 lazy, so the default USI baseline does not require the research repository or
 PyTorch.
 
+Install the optional model dependencies only when running checkpoint-backed
+policies:
+
+```sh
+uv run --extra model python -c "import torch, intrep"
+```
+
 ```python
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.usi import UsiEngine

@@ -12,5 +12,13 @@ dependencies = [
     "python-shogi>=1.1.1",
 ]
 
+[project.optional-dependencies]
+model = [
+    "intelligence-representation[torch]",
+]
+
+[tool.uv.sources]
+intelligence-representation = { path = "../intelligence-representation", editable = true }
+
 [tool.setuptools.packages.find]
 where = ["src"]
