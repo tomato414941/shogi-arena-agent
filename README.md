@@ -62,3 +62,16 @@ bestmove <legal-usi-move>
 
 The default policy is intentionally simple: it reconstructs the current board
 with `python-shogi` and returns one deterministic legal move.
+
+## Local Match Smoke
+
+```sh
+uv run python - <<'PY'
+from shogi_arena_agent.local_match import play_local_match
+
+print(play_local_match(max_plies=8))
+PY
+```
+
+This runs two local `UsiEngine` instances against each other and verifies each
+returned `bestmove` before applying it to the board.
