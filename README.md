@@ -131,6 +131,20 @@ evaluation = evaluate_player_against_usi_engine(
 print(evaluation)
 ```
 
+Checkpoint-backed evaluations can be run with a fixed script entrypoint:
+
+```sh
+uv run --extra model python scripts/evaluate_checkpoint_vs_yaneuraou.py \
+  --checkpoint /path/to/checkpoint.pt \
+  --yaneuraou /path/to/YaneuraOu \
+  --policy mcts \
+  --games 2 \
+  --max-plies 80 \
+  --simulations 16 \
+  --engine-go-command "go nodes 1" \
+  --out runs/shogi/evaluation.json
+```
+
 Local smoke tested with a material-evaluation YaneuraOu build:
 
 ```text
