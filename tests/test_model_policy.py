@@ -1,7 +1,7 @@
 import unittest
 
 from shogi_arena_agent.local_match import play_local_match
-from shogi_arena_agent.model_policy import RankedMovePolicy
+from shogi_arena_agent.model_policy import RankedMovePolicy, ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position
 
 
@@ -31,6 +31,20 @@ class RankedMovePolicyTest(unittest.TestCase):
 
         self.assertEqual(result.end_reason, "max_plies")
         self.assertEqual(len(result.moves), 4)
+
+    def test_checkpoint_evaluator_wraps_position_callable(self) -> None:
+        def evaluate_position(position_sfen: str, candidate_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
+            self.assertTrue(position_sfen)
+            return {move: 1.0 for move in candidate_moves}, 0.25
+
+        board = board_from_position(UsiPosition(command="position startpos"))
+        legal_moves = tuple(sorted(move.usi() for move in board.legal_moves))
+        evaluator = ShogiMoveChoiceCheckpointEvaluator(evaluate_position)
+
+        priors, value = evaluator.evaluate(board, legal_moves)
+
+        self.assertEqual(set(priors), set(legal_moves))
+        self.assertEqual(value, 0.25)
 
 
 if __name__ == "__main__":

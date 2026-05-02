@@ -56,3 +56,42 @@ class ShogiMoveChoiceCheckpointPolicy(RankedMovePolicy):
             return logits.squeeze(0).detach().cpu().tolist()
 
         return cls(rank_moves)
+
+
+class ShogiMoveChoiceCheckpointEvaluator:
+    @classmethod
+    def from_checkpoint(cls, checkpoint_path: str | Path, *, device: str = "cpu") -> ShogiMoveChoiceCheckpointEvaluator:
+        try:
+            import torch
+            from intrep.shogi_move_choice_checkpoint import load_shogi_move_choice_checkpoint
+            from intrep.shogi_move_encoding import shogi_candidate_move_features
+            from intrep.shogi_position_encoding import shogi_position_token_ids_from_sfen
+        except ImportError as error:
+            raise RuntimeError(
+                "intelligence-representation and torch are required to use shogi move choice checkpoints"
+            ) from error
+
+        model = load_shogi_move_choice_checkpoint(checkpoint_path, device=device)
+        torch_device = torch.device(device)
+
+        def evaluate(position_sfen: str, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
+            position_token_ids = shogi_position_token_ids_from_sfen(position_sfen).unsqueeze(0).to(torch_device)
+            candidate_move_features = shogi_candidate_move_features(
+                legal_moves,
+                max_choice_count=len(legal_moves),
+            ).unsqueeze(0).to(torch_device)
+            candidate_mask = torch.ones((1, len(legal_moves)), dtype=torch.bool, device=torch_device)
+            with torch.no_grad():
+                logits = model(position_token_ids, candidate_move_features, candidate_mask).squeeze(0)
+                value = model.predict_value(position_token_ids).squeeze(0) if hasattr(model, "predict_value") else None
+                probabilities = torch.softmax(logits, dim=0).detach().cpu().tolist()
+            prior = {move: float(probabilities[index]) for index, move in enumerate(legal_moves)}
+            return prior, 0.0 if value is None else float(value.detach().cpu().item())
+
+        return cls(evaluate)
+
+    def __init__(self, evaluate_position: Callable[[str, tuple[str, ...]], tuple[dict[str, float], float]]) -> None:
+        self.evaluate_position = evaluate_position
+
+    def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
+        return self.evaluate_position(board.sfen(), legal_moves)
