@@ -3,12 +3,17 @@ import tempfile
 from pathlib import Path
 
 from shogi_arena_agent.local_match import load_match_result, play_local_match, position_command, save_match_result
-from shogi_arena_agent.usi import UsiEngine, UsiPosition
+from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
 
 
 class IllegalPolicy:
     def select_move(self, position: UsiPosition) -> str:
         return "7g7f"
+
+
+class ResignPolicy:
+    def select_move(self, position: UsiPosition) -> str:
+        return RESIGN_MOVE
 
 
 class LocalMatchTest(unittest.TestCase):
@@ -24,6 +29,7 @@ class LocalMatchTest(unittest.TestCase):
         self.assertEqual(result.end_reason, "max_plies")
         self.assertEqual(len(result.moves), 6)
         self.assertNotEqual(result.final_sfen, "")
+        self.assertIsNone(result.winner)
 
     def test_match_stops_on_illegal_move(self) -> None:
         result = play_local_match(
@@ -34,6 +40,18 @@ class LocalMatchTest(unittest.TestCase):
 
         self.assertEqual(result.end_reason, "illegal_move")
         self.assertEqual(result.moves, ("7g7f",))
+        self.assertEqual(result.winner, "black")
+
+    def test_match_stops_on_resign(self) -> None:
+        result = play_local_match(
+            black=UsiEngine(policy=ResignPolicy()),
+            white=UsiEngine(),
+            max_plies=4,
+        )
+
+        self.assertEqual(result.end_reason, "resign")
+        self.assertEqual(result.moves, ())
+        self.assertEqual(result.winner, "white")
 
     def test_match_result_round_trip(self) -> None:
         result = play_local_match(max_plies=2)

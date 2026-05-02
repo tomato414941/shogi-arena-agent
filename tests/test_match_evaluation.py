@@ -15,6 +15,9 @@ class MatchEvaluationTest(unittest.TestCase):
         self.assertEqual(evaluation.end_reasons, {"max_plies": 2})
         self.assertEqual(evaluation.average_plies, 4.0)
         self.assertEqual(evaluation.illegal_move_count, 0)
+        self.assertEqual(evaluation.player_wins, 0)
+        self.assertEqual(evaluation.player_losses, 0)
+        self.assertEqual(evaluation.draws, 2)
         self.assertEqual(len(evaluation.results), 2)
 
     def test_evaluates_player_against_external_usi_engine(self) -> None:
@@ -28,6 +31,7 @@ class MatchEvaluationTest(unittest.TestCase):
         self.assertEqual(evaluation.game_count, 2)
         self.assertEqual(evaluation.end_reasons, {"max_plies": 2})
         self.assertEqual(evaluation.illegal_move_count, 0)
+        self.assertEqual(evaluation.draws, 2)
 
     def test_evaluates_external_engine_with_custom_go_command(self) -> None:
         command = [
@@ -55,6 +59,34 @@ class MatchEvaluationTest(unittest.TestCase):
 
         self.assertEqual(evaluation.game_count, 1)
         self.assertEqual(evaluation.illegal_move_count, 0)
+
+    def test_counts_player_wins_and_losses(self) -> None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "for line in sys.stdin:\n"
+                "    line = line.strip()\n"
+                "    if line == 'usi': print('usiok', flush=True)\n"
+                "    elif line == 'isready': print('readyok', flush=True)\n"
+                "    elif line.startswith('go'): print('bestmove resign', flush=True)\n"
+                "    elif line == 'quit': break\n"
+            ),
+        ]
+
+        evaluation = evaluate_player_against_usi_engine(
+            UsiEngine(),
+            command,
+            game_count=2,
+            max_plies=4,
+        )
+
+        self.assertEqual(evaluation.player_wins, 2)
+        self.assertEqual(evaluation.player_losses, 0)
+        self.assertEqual(evaluation.draws, 0)
+        self.assertEqual(evaluation.player_black_wins, 1)
+        self.assertEqual(evaluation.player_white_wins, 1)
 
 
 if __name__ == "__main__":
