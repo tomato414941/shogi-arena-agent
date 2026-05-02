@@ -50,12 +50,15 @@ printf 'usi\nisready\nposition startpos\ngo btime 0 wtime 0\nquit\n' \
   | uv run python -m shogi_arena_agent
 ```
 
-Current placeholder response:
+Example response:
 
 ```text
 id name shogi-arena-agent
 id author intrep
 usiok
 readyok
-bestmove 7g7f
+bestmove <legal-usi-move>
 ```
+
+The default policy is intentionally simple: it reconstructs the current board
+with `python-shogi` and returns one deterministic legal move.

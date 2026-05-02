@@ -1,6 +1,6 @@
 import unittest
 
-from shogi_arena_agent.usi import UsiEngine, UsiPosition, run_usi_loop
+from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position, run_usi_loop
 
 
 class FixedPolicy:
@@ -35,6 +35,32 @@ class UsiEngineTest(unittest.TestCase):
 
         self.assertEqual(response, ["bestmove 2g2f"])
         self.assertEqual(policy.positions, [UsiPosition(command="position startpos moves 7g7f")])
+
+    def test_default_policy_returns_legal_move_after_moves(self) -> None:
+        position = UsiPosition(command="position startpos moves 7g7f")
+        engine = UsiEngine()
+
+        response = engine.handle_line(position.command)
+        bestmove_response = engine.handle_line("go btime 0 wtime 0")
+
+        self.assertEqual(response, [])
+        self.assertEqual(len(bestmove_response), 1)
+        bestmove = bestmove_response[0].removeprefix("bestmove ")
+        legal_moves = {move.usi() for move in board_from_position(position).legal_moves}
+        self.assertIn(bestmove, legal_moves)
+
+    def test_board_from_sfen_position_with_moves(self) -> None:
+        position = UsiPosition(
+            command=(
+                "position sfen "
+                "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1 "
+                "moves 7g7f"
+            )
+        )
+
+        board = board_from_position(position)
+
+        self.assertIn("3c3d", {move.usi() for move in board.legal_moves})
 
     def test_run_loop_stops_on_quit(self) -> None:
         output = run_usi_loop(["usi\n", "isready\n", "quit\n", "usi\n"])
