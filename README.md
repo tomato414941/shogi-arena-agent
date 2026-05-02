@@ -63,6 +63,21 @@ bestmove <legal-usi-move>
 The default baseline policy is intentionally simple: it reconstructs the current
 board with `python-shogi` and returns one deterministic legal move.
 
+## Checkpoint Policy
+
+`ShogiMoveChoiceCheckpointPolicy` loads a shogi move-choice checkpoint exported
+by `intelligence-representation` and ranks the current legal moves. The import is
+lazy, so the default USI baseline does not require the research repository or
+PyTorch.
+
+```python
+from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointPolicy
+from shogi_arena_agent.usi import UsiEngine
+
+policy = ShogiMoveChoiceCheckpointPolicy.from_checkpoint("shogi.pt")
+engine = UsiEngine(policy=policy)
+```
+
 ## Local Match Smoke
 
 ```sh
