@@ -42,3 +42,20 @@ intelligence-representation
 3. Wrap that policy behind a USI-compatible process.
 4. Run local games against a baseline engine.
 5. Evaluate Lishogi Bot integration.
+
+## Local USI Smoke
+
+```sh
+printf 'usi\nisready\nposition startpos\ngo btime 0 wtime 0\nquit\n' \
+  | uv run python -m shogi_arena_agent
+```
+
+Current placeholder response:
+
+```text
+id name shogi-arena-agent
+id author intrep
+usiok
+readyok
+bestmove 7g7f
+```
