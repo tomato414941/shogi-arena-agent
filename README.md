@@ -75,3 +75,15 @@ PY
 
 This runs two local `UsiEngine` instances against each other and verifies each
 returned `bestmove` before applying it to the board.
+
+To exercise the real process boundary:
+
+```sh
+uv run python - <<'PY'
+from shogi_arena_agent.local_match import play_local_match
+from shogi_arena_agent.usi_process import UsiProcess
+
+with UsiProcess() as black, UsiProcess() as white:
+    print(play_local_match(black=black, white=white, max_plies=8))
+PY
+```
