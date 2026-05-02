@@ -21,6 +21,25 @@ class UsiProcessTest(unittest.TestCase):
 
         self.assertNotEqual(bestmove, "")
 
+    def test_go_strips_ponder_move_from_bestmove(self) -> None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "for line in sys.stdin:\n"
+                "    line = line.strip()\n"
+                "    if line == 'usi': print('usiok', flush=True)\n"
+                "    elif line == 'isready': print('readyok', flush=True)\n"
+                "    elif line.startswith('go'): print('bestmove 7g7f ponder 3c3d', flush=True)\n"
+                "    elif line == 'quit': break\n"
+            ),
+        ]
+        with UsiProcess(command=command) as process:
+            bestmove = process.go()
+
+        self.assertEqual(bestmove, "7g7f")
+
     def test_process_can_play_local_match(self) -> None:
         with UsiProcess() as black, UsiProcess() as white:
             result = play_local_match(black=black, white=white, max_plies=4)

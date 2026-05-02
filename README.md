@@ -124,6 +124,12 @@ evaluation = evaluate_player_against_usi_engine(
 print(evaluation)
 ```
 
+Local smoke tested with a material-evaluation YaneuraOu build:
+
+```text
+/home/dev/projects/external/YaneuraOu/source/YaneuraOu-by-gcc
+```
+
 ## Match Log Smoke
 
 ```sh

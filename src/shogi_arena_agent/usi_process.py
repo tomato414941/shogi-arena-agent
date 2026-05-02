@@ -89,7 +89,7 @@ class UsiProcess:
         while True:
             line = self._read_line()
             if line.startswith("bestmove "):
-                return line.removeprefix("bestmove ")
+                return line.removeprefix("bestmove ").split()[0]
 
     def _read_line(self) -> str:
         process = self._running_process()
