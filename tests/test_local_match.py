@@ -1,6 +1,8 @@
 import unittest
+import tempfile
+from pathlib import Path
 
-from shogi_arena_agent.local_match import play_local_match, position_command
+from shogi_arena_agent.local_match import load_match_result, play_local_match, position_command, save_match_result
 from shogi_arena_agent.usi import UsiEngine, UsiPosition
 
 
@@ -21,6 +23,7 @@ class LocalMatchTest(unittest.TestCase):
 
         self.assertEqual(result.end_reason, "max_plies")
         self.assertEqual(len(result.moves), 6)
+        self.assertNotEqual(result.final_sfen, "")
 
     def test_match_stops_on_illegal_move(self) -> None:
         result = play_local_match(
@@ -31,6 +34,16 @@ class LocalMatchTest(unittest.TestCase):
 
         self.assertEqual(result.end_reason, "illegal_move")
         self.assertEqual(result.moves, ("7g7f",))
+
+    def test_match_result_round_trip(self) -> None:
+        result = play_local_match(max_plies=2)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "match.json"
+            save_match_result(result, path)
+            loaded = load_match_result(path)
+
+        self.assertEqual(loaded, result)
 
 
 if __name__ == "__main__":

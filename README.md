@@ -60,8 +60,8 @@ readyok
 bestmove <legal-usi-move>
 ```
 
-The default policy is intentionally simple: it reconstructs the current board
-with `python-shogi` and returns one deterministic legal move.
+The default baseline policy is intentionally simple: it reconstructs the current
+board with `python-shogi` and returns one deterministic legal move.
 
 ## Local Match Smoke
 
@@ -85,5 +85,22 @@ from shogi_arena_agent.usi_process import UsiProcess
 
 with UsiProcess() as black, UsiProcess() as white:
     print(play_local_match(black=black, white=white, max_plies=8))
+PY
+```
+
+`UsiProcess(command=[...])` can also wrap an external USI engine command. A
+read timeout is applied so a non-responsive engine does not hang the runner.
+
+## Match Log Smoke
+
+```sh
+uv run python - <<'PY'
+from pathlib import Path
+
+from shogi_arena_agent.local_match import play_local_match, save_match_result
+
+result = play_local_match(max_plies=8)
+save_match_result(result, Path("match.json"))
+print(result)
 PY
 ```

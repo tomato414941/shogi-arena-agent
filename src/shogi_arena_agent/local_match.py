@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 import shogi
@@ -12,6 +14,25 @@ from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine
 class LocalMatchResult:
     moves: tuple[str, ...]
     end_reason: str
+    final_sfen: str
+
+
+def save_match_result(result: LocalMatchResult, path: str | Path) -> None:
+    data = {
+        "moves": list(result.moves),
+        "end_reason": result.end_reason,
+        "final_sfen": result.final_sfen,
+    }
+    Path(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def load_match_result(path: str | Path) -> LocalMatchResult:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return LocalMatchResult(
+        moves=tuple(data["moves"]),
+        end_reason=data["end_reason"],
+        final_sfen=data["final_sfen"],
+    )
 
 
 class LocalPlayer(Protocol):
@@ -60,18 +81,18 @@ def play_local_match(
         player.position(position_command(tuple(moves)))
         move = player.go()
         if move == RESIGN_MOVE:
-            return LocalMatchResult(moves=tuple(moves), end_reason="resign")
+            return LocalMatchResult(moves=tuple(moves), end_reason="resign", final_sfen=board.sfen())
 
         legal_moves = {legal_move.usi() for legal_move in board.legal_moves}
         if move not in legal_moves:
-            return LocalMatchResult(moves=tuple(moves), end_reason="illegal_move")
+            return LocalMatchResult(moves=tuple(moves), end_reason="illegal_move", final_sfen=board.sfen())
 
         board.push_usi(move)
         moves.append(move)
         if board.is_game_over():
-            return LocalMatchResult(moves=tuple(moves), end_reason="game_over")
+            return LocalMatchResult(moves=tuple(moves), end_reason="game_over", final_sfen=board.sfen())
 
-    return LocalMatchResult(moves=tuple(moves), end_reason="max_plies")
+    return LocalMatchResult(moves=tuple(moves), end_reason="max_plies", final_sfen=board.sfen())
 
 
 def _as_player(player: LocalPlayer | UsiEngine) -> LocalPlayer:

@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import queue
+import threading
 from collections.abc import Sequence
 from types import TracebackType
 
 
 class UsiProcess:
-    def __init__(self, command: Sequence[str] | None = None) -> None:
+    def __init__(self, command: Sequence[str] | None = None, *, read_timeout_seconds: float = 5.0) -> None:
         self.command = list(command or [sys.executable, "-m", "shogi_arena_agent"])
+        self.read_timeout_seconds = read_timeout_seconds
         self.process: subprocess.Popen[str] | None = None
+        self._stdout_lines: queue.Queue[str] = queue.Queue()
+        self._stdout_thread: threading.Thread | None = None
 
     def __enter__(self) -> UsiProcess:
         self.start()
@@ -34,6 +39,8 @@ class UsiProcess:
             text=True,
             bufsize=1,
         )
+        self._stdout_thread = threading.Thread(target=self._read_stdout, daemon=True)
+        self._stdout_thread.start()
         self._send("usi")
         self._read_until("usiok")
         self._send("isready")
@@ -61,6 +68,7 @@ class UsiProcess:
             if stream is not None:
                 stream.close()
         self.process = None
+        self._stdout_thread = None
 
     def _send(self, line: str) -> None:
         process = self._running_process()
@@ -85,13 +93,22 @@ class UsiProcess:
 
     def _read_line(self) -> str:
         process = self._running_process()
-        if process.stdout is None:
-            raise RuntimeError("USI process stdout is not available")
-        line = process.stdout.readline()
+        try:
+            line = self._stdout_lines.get(timeout=self.read_timeout_seconds)
+        except queue.Empty:
+            raise TimeoutError(f"USI process did not respond within {self.read_timeout_seconds} seconds")
         if line == "":
             stderr = process.stderr.read() if process.stderr is not None else ""
             raise RuntimeError(f"USI process exited unexpectedly: {stderr.strip()}")
         return line.strip()
+
+    def _read_stdout(self) -> None:
+        process = self.process
+        if process is None or process.stdout is None:
+            return
+        for line in process.stdout:
+            self._stdout_lines.put(line)
+        self._stdout_lines.put("")
 
     def _running_process(self) -> subprocess.Popen[str]:
         if self.process is None:

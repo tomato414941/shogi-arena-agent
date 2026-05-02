@@ -37,20 +37,13 @@ def board_from_position(position: UsiPosition) -> shogi.Board:
     return board
 
 
-class LegalMovePolicy:
-    def select_move(self, position: UsiPosition) -> str:
-        board = board_from_position(position)
-        moves = sorted(move.usi() for move in board.legal_moves)
-        if not moves:
-            return RESIGN_MOVE
-        return moves[0]
-
-
 class UsiEngine:
     def __init__(self, *, name: str = "shogi-arena-agent", author: str = "intrep", policy: MovePolicy | None = None) -> None:
+        from shogi_arena_agent.baseline_policy import DeterministicLegalMovePolicy
+
         self.name = name
         self.author = author
-        self.policy = policy or LegalMovePolicy()
+        self.policy = policy or DeterministicLegalMovePolicy()
         self.position = UsiPosition()
 
     def handle_line(self, line: str) -> list[str]:
