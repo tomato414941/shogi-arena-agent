@@ -77,6 +77,12 @@ policies:
 uv run --extra model python -c "import torch, intrep"
 ```
 
+Run the checkpoint as a USI engine:
+
+```sh
+uv run --extra model python -m shogi_arena_agent --checkpoint /path/to/checkpoint.pt
+```
+
 ```python
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.usi import UsiEngine
