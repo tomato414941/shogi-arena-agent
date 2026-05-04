@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from shogi_arena_agent.local_match import LocalPlayer, LocalMatchResult, play_local_match
+from shogi_arena_agent.local_match import LocalPlayer, LocalMatchResult, PlayerSpec, play_local_match
 from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
@@ -32,18 +32,32 @@ def evaluate_player_against_baseline(
     *,
     game_count: int = 2,
     max_plies: int = 64,
+    player_spec: PlayerSpec | None = None,
 ) -> MatchEvaluation:
     if game_count <= 0:
         raise ValueError("game_count must be positive")
 
     results: list[LocalMatchResult] = []
     player_sides: list[str] = []
+    player_spec = player_spec or _local_player_spec(player, name="player")
     for game_index in range(game_count):
         if game_index % 2 == 0:
-            result = play_local_match(black=player, white=UsiEngine(name="baseline-white"), max_plies=max_plies)
+            result = play_local_match(
+                black=player,
+                white=UsiEngine(name="baseline-white"),
+                black_player=player_spec,
+                white_player=PlayerSpec(kind="baseline", name="baseline-white", settings={}),
+                max_plies=max_plies,
+            )
             player_sides.append("black")
         else:
-            result = play_local_match(black=UsiEngine(name="baseline-black"), white=player, max_plies=max_plies)
+            result = play_local_match(
+                black=UsiEngine(name="baseline-black"),
+                white=player,
+                black_player=PlayerSpec(kind="baseline", name="baseline-black", settings={}),
+                white_player=player_spec,
+                max_plies=max_plies,
+            )
             player_sides.append("white")
         results.append(result)
 
@@ -58,12 +72,24 @@ def evaluate_player_against_usi_engine(
     max_plies: int = 64,
     engine_go_command: str = "go btime 0 wtime 0",
     read_timeout_seconds: float = 5.0,
+    player_spec: PlayerSpec | None = None,
+    engine_spec: PlayerSpec | None = None,
 ) -> MatchEvaluation:
     if game_count <= 0:
         raise ValueError("game_count must be positive")
 
     results: list[LocalMatchResult] = []
     player_sides: list[str] = []
+    player_spec = player_spec or _local_player_spec(player, name="player")
+    external_spec = engine_spec or PlayerSpec(
+        kind="usi_process",
+        name="external",
+        settings={
+            "command": " ".join(engine_command),
+            "go_command": engine_go_command,
+            "read_timeout_seconds": read_timeout_seconds,
+        },
+    )
     for game_index in range(game_count):
         with UsiProcess(
             command=engine_command,
@@ -71,10 +97,22 @@ def evaluate_player_against_usi_engine(
             read_timeout_seconds=read_timeout_seconds,
         ) as external_engine:
             if game_index % 2 == 0:
-                result = play_local_match(black=player, white=external_engine, max_plies=max_plies)
+                result = play_local_match(
+                    black=player,
+                    white=external_engine,
+                    black_player=player_spec,
+                    white_player=external_spec,
+                    max_plies=max_plies,
+                )
                 player_sides.append("black")
             else:
-                result = play_local_match(black=external_engine, white=player, max_plies=max_plies)
+                result = play_local_match(
+                    black=external_engine,
+                    white=player,
+                    black_player=external_spec,
+                    white_player=player_spec,
+                    max_plies=max_plies,
+                )
                 player_sides.append("white")
             results.append(result)
 
@@ -115,3 +153,9 @@ def _summarize_match_results(results: list[LocalMatchResult], player_sides: list
         illegal_move_count=end_reasons.get("illegal_move", 0),
         results=tuple(results),
     )
+
+
+def _local_player_spec(player: LocalPlayer | UsiEngine, *, name: str) -> PlayerSpec:
+    if isinstance(player, UsiEngine):
+        return PlayerSpec(kind="usi_engine", name=player.name, settings={})
+    return PlayerSpec(kind="local_player", name=name, settings={})

@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from shogi_arena_agent.local_match import load_match_result, play_local_match, position_command, save_match_result
+from shogi_arena_agent.local_match import PlayerSpec, load_match_result, play_local_match, position_command, save_match_result
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
 
 
@@ -28,8 +28,21 @@ class LocalMatchTest(unittest.TestCase):
 
         self.assertEqual(result.end_reason, "max_plies")
         self.assertEqual(len(result.moves), 6)
-        self.assertNotEqual(result.final_sfen, "")
+        self.assertEqual(result.black_player.name, "black")
+        self.assertEqual(result.white_player.name, "white")
         self.assertIsNone(result.winner)
+
+    def test_records_explicit_player_specs(self) -> None:
+        result = play_local_match(
+            black_player=PlayerSpec(kind="checkpoint", name="model-a", settings={"checkpoint": "a.pt"}),
+            white_player=PlayerSpec(kind="yaneuraou", name="yaneuraou", settings={"go_command": "go nodes 10"}),
+            max_plies=2,
+        )
+
+        self.assertEqual(result.black_player.kind, "checkpoint")
+        self.assertEqual(result.black_player.settings["checkpoint"], "a.pt")
+        self.assertEqual(result.white_player.kind, "yaneuraou")
+        self.assertEqual(result.white_player.settings["go_command"], "go nodes 10")
 
     def test_match_stops_on_illegal_move(self) -> None:
         result = play_local_match(

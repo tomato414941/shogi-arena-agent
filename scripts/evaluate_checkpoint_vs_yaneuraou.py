@@ -6,6 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from shogi_arena_agent.local_match import PlayerSpec
 from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
@@ -33,6 +34,23 @@ def main() -> None:
         max_plies=args.max_plies,
         engine_go_command=args.engine_go_command,
         read_timeout_seconds=args.read_timeout_seconds,
+        player_spec=PlayerSpec(
+            kind="checkpoint",
+            name=f"checkpoint-{args.policy}",
+            settings={
+                "checkpoint": args.checkpoint,
+                "policy": args.policy,
+                "simulations": args.simulations if args.policy == "mcts" else None,
+            },
+        ),
+        engine_spec=PlayerSpec(
+            kind="yaneuraou",
+            name="yaneuraou",
+            settings={
+                "command": args.yaneuraou,
+                "go_command": args.engine_go_command,
+            },
+        ),
     )
     output = {
         "checkpoint": args.checkpoint,
