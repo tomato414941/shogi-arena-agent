@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from shogi_arena_agent.local_match import LocalPlayer, LocalMatchResult, PlayerSpec, play_local_match
+from shogi_arena_agent.shogi_game import ShogiPlayer, ShogiGameRecord, PlayerSpec, play_shogi_game
 from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
@@ -24,11 +24,11 @@ class MatchEvaluation:
     player_white_losses: int
     average_plies: float
     illegal_move_count: int
-    results: tuple[LocalMatchResult, ...]
+    results: tuple[ShogiGameRecord, ...]
 
 
 def evaluate_player_against_baseline(
-    player: LocalPlayer | UsiEngine,
+    player: ShogiPlayer | UsiEngine,
     *,
     game_count: int = 2,
     max_plies: int = 64,
@@ -37,12 +37,12 @@ def evaluate_player_against_baseline(
     if game_count <= 0:
         raise ValueError("game_count must be positive")
 
-    results: list[LocalMatchResult] = []
+    results: list[ShogiGameRecord] = []
     player_sides: list[str] = []
-    player_spec = player_spec or _local_player_spec(player, name="player")
+    player_spec = player_spec or _shogi_player_spec(player, name="player")
     for game_index in range(game_count):
         if game_index % 2 == 0:
-            result = play_local_match(
+            result = play_shogi_game(
                 black=player,
                 white=UsiEngine(name="baseline-white"),
                 black_player=player_spec,
@@ -51,7 +51,7 @@ def evaluate_player_against_baseline(
             )
             player_sides.append("black")
         else:
-            result = play_local_match(
+            result = play_shogi_game(
                 black=UsiEngine(name="baseline-black"),
                 white=player,
                 black_player=PlayerSpec(kind="baseline", name="baseline-black", settings={}),
@@ -65,7 +65,7 @@ def evaluate_player_against_baseline(
 
 
 def evaluate_player_against_usi_engine(
-    player: LocalPlayer | UsiEngine,
+    player: ShogiPlayer | UsiEngine,
     engine_command: Sequence[str],
     *,
     game_count: int = 2,
@@ -78,9 +78,9 @@ def evaluate_player_against_usi_engine(
     if game_count <= 0:
         raise ValueError("game_count must be positive")
 
-    results: list[LocalMatchResult] = []
+    results: list[ShogiGameRecord] = []
     player_sides: list[str] = []
-    player_spec = player_spec or _local_player_spec(player, name="player")
+    player_spec = player_spec or _shogi_player_spec(player, name="player")
     external_spec = engine_spec or PlayerSpec(
         kind="usi_process",
         name="external",
@@ -97,7 +97,7 @@ def evaluate_player_against_usi_engine(
             read_timeout_seconds=read_timeout_seconds,
         ) as external_engine:
             if game_index % 2 == 0:
-                result = play_local_match(
+                result = play_shogi_game(
                     black=player,
                     white=external_engine,
                     black_player=player_spec,
@@ -106,7 +106,7 @@ def evaluate_player_against_usi_engine(
                 )
                 player_sides.append("black")
             else:
-                result = play_local_match(
+                result = play_shogi_game(
                     black=external_engine,
                     white=player,
                     black_player=external_spec,
@@ -119,7 +119,7 @@ def evaluate_player_against_usi_engine(
     return _summarize_match_results(results, player_sides)
 
 
-def _summarize_match_results(results: list[LocalMatchResult], player_sides: list[str]) -> MatchEvaluation:
+def _summarize_match_results(results: list[ShogiGameRecord], player_sides: list[str]) -> MatchEvaluation:
     game_count = len(results)
     end_reasons = Counter(result.end_reason for result in results)
     player_wins = sum(1 for result, side in zip(results, player_sides) if result.winner == side)
@@ -155,7 +155,7 @@ def _summarize_match_results(results: list[LocalMatchResult], player_sides: list
     )
 
 
-def _local_player_spec(player: LocalPlayer | UsiEngine, *, name: str) -> PlayerSpec:
+def _shogi_player_spec(player: ShogiPlayer | UsiEngine, *, name: str) -> PlayerSpec:
     if isinstance(player, UsiEngine):
         return PlayerSpec(kind="usi_engine", name=player.name, settings={})
-    return PlayerSpec(kind="local_player", name=name, settings={})
+    return PlayerSpec(kind="shogi_player", name=name, settings={})

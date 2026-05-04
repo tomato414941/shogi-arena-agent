@@ -2,7 +2,7 @@ import unittest
 
 import shogi
 
-from shogi_arena_agent.local_match import play_local_match
+from shogi_arena_agent.shogi_game import play_shogi_game
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy, PolicyValueEvaluator
 from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position
 
@@ -52,7 +52,7 @@ class MctsPolicyTest(unittest.TestCase):
 
         self.assertEqual(move, "8h2b+")
 
-    def test_can_play_local_match(self) -> None:
+    def test_can_play_shogi_game(self) -> None:
         player = UsiEngine(
             policy=MctsPolicy(
                 PriorOnlyEvaluator("7g7f"),
@@ -60,7 +60,7 @@ class MctsPolicyTest(unittest.TestCase):
             )
         )
 
-        result = play_local_match(black=player, white=UsiEngine(), max_plies=4)
+        result = play_shogi_game(black=player, white=UsiEngine(), max_plies=4)
 
         self.assertEqual(result.end_reason, "max_plies")
         self.assertEqual(len(result.moves), 4)

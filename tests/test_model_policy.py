@@ -1,6 +1,6 @@
 import unittest
 
-from shogi_arena_agent.local_match import play_local_match
+from shogi_arena_agent.shogi_game import play_shogi_game
 from shogi_arena_agent.model_policy import RankedMovePolicy, ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position
 
@@ -19,11 +19,11 @@ class RankedMovePolicyTest(unittest.TestCase):
 
         self.assertEqual(move, preferred_move)
 
-    def test_ranked_policy_can_play_local_match(self) -> None:
+    def test_ranked_policy_can_play_shogi_game(self) -> None:
         def rank_first(_position_sfen: str, candidate_moves: tuple[str, ...]) -> list[float]:
             return [float(len(candidate_moves) - index) for index, _move in enumerate(candidate_moves)]
 
-        result = play_local_match(
+        result = play_shogi_game(
             black=UsiEngine(policy=RankedMovePolicy(rank_first)),
             white=UsiEngine(),
             max_plies=4,

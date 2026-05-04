@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from shogi_arena_agent.local_match import PlayerSpec, save_match_results_jsonl
+from shogi_arena_agent.shogi_game import PlayerSpec, save_shogi_game_records_jsonl
 from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
@@ -17,7 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Play checkpoint-vs-YaneuraOu games and write raw game logs.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--yaneuraou", required=True)
-    parser.add_argument("--out", required=True, help="Path to write one LocalMatchResult JSON object per line.")
+    parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--policy", choices=("direct", "mcts"), default="mcts")
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--max-plies", type=int, default=80)
@@ -52,7 +52,7 @@ def main() -> None:
             },
         ),
     )
-    save_match_results_jsonl(evaluation.results, Path(args.out))
+    save_shogi_game_records_jsonl(evaluation.results, Path(args.out))
     print(json.dumps(_evaluation_summary(evaluation), indent=2))
 
 

@@ -1,7 +1,7 @@
 import unittest
 import sys
 
-from shogi_arena_agent.local_match import play_local_match
+from shogi_arena_agent.shogi_game import play_shogi_game
 from shogi_arena_agent.usi_process import UsiProcess
 
 
@@ -64,9 +64,9 @@ class UsiProcessTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             UsiProcess(go_command="position startpos")
 
-    def test_process_can_play_local_match(self) -> None:
+    def test_process_can_play_shogi_game(self) -> None:
         with UsiProcess() as black, UsiProcess() as white:
-            result = play_local_match(black=black, white=white, max_plies=4)
+            result = play_shogi_game(black=black, white=white, max_plies=4)
 
         self.assertEqual(result.end_reason, "max_plies")
         self.assertEqual(len(result.moves), 4)

@@ -19,7 +19,7 @@ class PlayerSpec:
 
 
 @dataclass(frozen=True)
-class LocalMatchResult:
+class ShogiGameRecord:
     black_player: PlayerSpec
     white_player: PlayerSpec
     moves: tuple[str, ...]
@@ -27,24 +27,24 @@ class LocalMatchResult:
     winner: str | None = None
 
 
-def save_match_results_jsonl(results: Iterable[LocalMatchResult], path: str | Path) -> None:
+def save_shogi_game_records_jsonl(results: Iterable[ShogiGameRecord], path: str | Path) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [json.dumps(match_result_to_json(result), sort_keys=True) for result in results]
+    lines = [json.dumps(shogi_game_record_to_json(result), sort_keys=True) for result in results]
     output_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
-def load_match_results_jsonl(path: str | Path) -> tuple[LocalMatchResult, ...]:
-    results: list[LocalMatchResult] = []
+def load_shogi_game_records_jsonl(path: str | Path) -> tuple[ShogiGameRecord, ...]:
+    results: list[ShogiGameRecord] = []
     with Path(path).open(encoding="utf-8") as file:
         for line in file:
             line = line.strip()
             if line:
-                results.append(match_result_from_json(json.loads(line)))
+                results.append(shogi_game_record_from_json(json.loads(line)))
     return tuple(results)
 
 
-def match_result_to_json(result: LocalMatchResult) -> dict[str, object]:
+def shogi_game_record_to_json(result: ShogiGameRecord) -> dict[str, object]:
     return {
         "moves": list(result.moves),
         "end_reason": result.end_reason,
@@ -54,8 +54,8 @@ def match_result_to_json(result: LocalMatchResult) -> dict[str, object]:
     }
 
 
-def match_result_from_json(data: dict[str, object]) -> LocalMatchResult:
-    return LocalMatchResult(
+def shogi_game_record_from_json(data: dict[str, object]) -> ShogiGameRecord:
+    return ShogiGameRecord(
         black_player=_player_spec_from_json(_object_dict(data["black_player"])),
         white_player=_player_spec_from_json(_object_dict(data["white_player"])),
         moves=tuple(str(move) for move in cast(list[object], data["moves"])),
@@ -64,7 +64,7 @@ def match_result_from_json(data: dict[str, object]) -> LocalMatchResult:
     )
 
 
-class LocalPlayer(Protocol):
+class ShogiPlayer(Protocol):
     def position(self, command: str) -> None:
         """Set the current USI position."""
 
@@ -72,7 +72,7 @@ class LocalPlayer(Protocol):
         """Return a USI bestmove."""
 
 
-class InProcessPlayer:
+class InProcessShogiPlayer:
     def __init__(self, engine: UsiEngine) -> None:
         self.engine = engine
 
@@ -92,14 +92,14 @@ def position_command(moves: tuple[str, ...]) -> str:
     return "position startpos moves " + " ".join(moves)
 
 
-def play_local_match(
+def play_shogi_game(
     *,
-    black: LocalPlayer | UsiEngine | None = None,
-    white: LocalPlayer | UsiEngine | None = None,
+    black: ShogiPlayer | UsiEngine | None = None,
+    white: ShogiPlayer | UsiEngine | None = None,
     black_player: PlayerSpec | None = None,
     white_player: PlayerSpec | None = None,
     max_plies: int = 32,
-) -> LocalMatchResult:
+) -> ShogiGameRecord:
     board = shogi.Board()
     black_engine = black or UsiEngine(name="black")
     white_engine = white or UsiEngine(name="white")
@@ -117,7 +117,7 @@ def play_local_match(
         move = player.go()
         if move == RESIGN_MOVE:
             winner = "white" if board.turn == shogi.BLACK else "black"
-            return LocalMatchResult(
+            return ShogiGameRecord(
                 black_player=black_spec,
                 white_player=white_spec,
                 moves=tuple(moves),
@@ -128,7 +128,7 @@ def play_local_match(
         legal_moves = {legal_move.usi() for legal_move in board.legal_moves}
         if move not in legal_moves:
             winner = "white" if board.turn == shogi.BLACK else "black"
-            return LocalMatchResult(
+            return ShogiGameRecord(
                 black_player=black_spec,
                 white_player=white_spec,
                 moves=tuple(moves),
@@ -140,7 +140,7 @@ def play_local_match(
         moves.append(move)
         if board.is_game_over():
             winner = "black" if board.turn == shogi.WHITE else "white"
-            return LocalMatchResult(
+            return ShogiGameRecord(
                 black_player=black_spec,
                 white_player=white_spec,
                 moves=tuple(moves),
@@ -148,7 +148,7 @@ def play_local_match(
                 winner=winner,
             )
 
-    return LocalMatchResult(
+    return ShogiGameRecord(
         black_player=black_spec,
         white_player=white_spec,
         moves=tuple(moves),
@@ -156,16 +156,16 @@ def play_local_match(
     )
 
 
-def _as_player(player: LocalPlayer | UsiEngine) -> LocalPlayer:
+def _as_player(player: ShogiPlayer | UsiEngine) -> ShogiPlayer:
     if isinstance(player, UsiEngine):
-        return InProcessPlayer(player)
+        return InProcessShogiPlayer(player)
     return player
 
 
-def _default_player_spec(player: LocalPlayer | UsiEngine, *, side: str) -> PlayerSpec:
+def _default_player_spec(player: ShogiPlayer | UsiEngine, *, side: str) -> PlayerSpec:
     if isinstance(player, UsiEngine):
         return PlayerSpec(kind="usi_engine", name=player.name, settings={})
-    return PlayerSpec(kind="local_player", name=side, settings={})
+    return PlayerSpec(kind="shogi_player", name=side, settings={})
 
 
 def _player_spec_to_json(spec: PlayerSpec) -> dict[str, object]:
