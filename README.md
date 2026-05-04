@@ -151,11 +151,7 @@ uv run --extra model python scripts/evaluate_checkpoint_vs_yaneuraou.py \
   --out runs/shogi/evaluation.json
 ```
 
-Local smoke tested with a material-evaluation YaneuraOu build:
-
-```text
-/home/dev/projects/external/YaneuraOu/source/YaneuraOu-by-gcc
-```
+Local smoke tests can use a material-evaluation YaneuraOu build.
 
 ## Match Log Smoke
 
