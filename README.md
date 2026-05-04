@@ -137,7 +137,7 @@ evaluation = evaluate_player_against_usi_engine(
 print(evaluation)
 ```
 
-Checkpoint-backed evaluations can be run with a fixed script entrypoint:
+Checkpoint-backed games can be written as raw game log JSONL:
 
 ```sh
 uv run --extra model python scripts/evaluate_checkpoint_vs_yaneuraou.py \
@@ -148,7 +148,7 @@ uv run --extra model python scripts/evaluate_checkpoint_vs_yaneuraou.py \
   --max-plies 80 \
   --simulations 16 \
   --engine-go-command "go nodes 1" \
-  --out runs/shogi/evaluation.json
+  --out runs/shogi/games.jsonl
 ```
 
 Local smoke tests can use a material-evaluation YaneuraOu build.
@@ -159,10 +159,10 @@ Local smoke tests can use a material-evaluation YaneuraOu build.
 uv run python - <<'PY'
 from pathlib import Path
 
-from shogi_arena_agent.local_match import play_local_match, save_match_result
+from shogi_arena_agent.local_match import play_local_match, save_match_results_jsonl
 
 result = play_local_match(max_plies=8)
-save_match_result(result, Path("match.json"))
+save_match_results_jsonl((result,), Path("games.jsonl"))
 print(result)
 PY
 ```

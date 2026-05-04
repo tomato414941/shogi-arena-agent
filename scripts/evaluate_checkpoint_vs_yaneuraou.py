@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from shogi_arena_agent.local_match import PlayerSpec
+from shogi_arena_agent.local_match import PlayerSpec, save_match_results_jsonl
 from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
@@ -14,10 +14,10 @@ from shogi_arena_agent.usi import UsiEngine
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate a shogi checkpoint against YaneuraOu.")
+    parser = argparse.ArgumentParser(description="Play checkpoint-vs-YaneuraOu games and write raw game logs.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--yaneuraou", required=True)
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--out", required=True, help="Path to write one LocalMatchResult JSON object per line.")
     parser.add_argument("--policy", choices=("direct", "mcts"), default="mcts")
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--max-plies", type=int, default=80)
@@ -52,17 +52,8 @@ def main() -> None:
             },
         ),
     )
-    output = {
-        "checkpoint": args.checkpoint,
-        "yaneuraou": args.yaneuraou,
-        "policy": args.policy,
-        "games": args.games,
-        "max_plies": args.max_plies,
-        "simulations": args.simulations if args.policy == "mcts" else None,
-        "engine_go_command": args.engine_go_command,
-        "evaluation": asdict(evaluation),
-    }
-    _write_json(output, Path(args.out))
+    save_match_results_jsonl(evaluation.results, Path(args.out))
+    print(json.dumps(_evaluation_summary(evaluation), indent=2))
 
 
 def _load_policy(args: argparse.Namespace) -> Any:
@@ -72,9 +63,10 @@ def _load_policy(args: argparse.Namespace) -> Any:
     return MctsPolicy(evaluator=evaluator, config=MctsConfig(simulation_count=args.simulations))
 
 
-def _write_json(data: dict[str, Any], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+def _evaluation_summary(evaluation: Any) -> dict[str, Any]:
+    data = asdict(evaluation)
+    data.pop("results")
+    return data
 
 
 if __name__ == "__main__":

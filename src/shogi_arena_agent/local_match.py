@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
@@ -26,25 +27,40 @@ class LocalMatchResult:
     winner: str | None = None
 
 
-def save_match_result(result: LocalMatchResult, path: str | Path) -> None:
-    data = {
+def save_match_results_jsonl(results: Iterable[LocalMatchResult], path: str | Path) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps(match_result_to_json(result), sort_keys=True) for result in results]
+    output_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+
+def load_match_results_jsonl(path: str | Path) -> tuple[LocalMatchResult, ...]:
+    results: list[LocalMatchResult] = []
+    with Path(path).open(encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if line:
+                results.append(match_result_from_json(json.loads(line)))
+    return tuple(results)
+
+
+def match_result_to_json(result: LocalMatchResult) -> dict[str, object]:
+    return {
         "moves": list(result.moves),
         "end_reason": result.end_reason,
         "winner": result.winner,
         "black_player": _player_spec_to_json(result.black_player),
         "white_player": _player_spec_to_json(result.white_player),
     }
-    Path(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def load_match_result(path: str | Path) -> LocalMatchResult:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+def match_result_from_json(data: dict[str, object]) -> LocalMatchResult:
     return LocalMatchResult(
-        black_player=_player_spec_from_json(data["black_player"]),
-        white_player=_player_spec_from_json(data["white_player"]),
-        moves=tuple(data["moves"]),
-        end_reason=data["end_reason"],
-        winner=data.get("winner"),
+        black_player=_player_spec_from_json(_object_dict(data["black_player"])),
+        white_player=_player_spec_from_json(_object_dict(data["white_player"])),
+        moves=tuple(str(move) for move in cast(list[object], data["moves"])),
+        end_reason=str(data["end_reason"]),
+        winner=None if data.get("winner") is None else str(data["winner"]),
     )
 
 
@@ -169,3 +185,9 @@ def _player_spec_from_json(data: dict[str, object]) -> PlayerSpec:
         name=str(data["name"]),
         settings=cast(dict[str, str | int | float | bool | None], settings),
     )
+
+
+def _object_dict(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("expected object")
+    return value

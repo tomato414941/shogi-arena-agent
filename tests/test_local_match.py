@@ -2,7 +2,13 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from shogi_arena_agent.local_match import PlayerSpec, load_match_result, play_local_match, position_command, save_match_result
+from shogi_arena_agent.local_match import (
+    PlayerSpec,
+    load_match_results_jsonl,
+    play_local_match,
+    position_command,
+    save_match_results_jsonl,
+)
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
 
 
@@ -66,15 +72,15 @@ class LocalMatchTest(unittest.TestCase):
         self.assertEqual(result.moves, ())
         self.assertEqual(result.winner, "white")
 
-    def test_match_result_round_trip(self) -> None:
-        result = play_local_match(max_plies=2)
+    def test_match_results_jsonl_round_trip(self) -> None:
+        results = (play_local_match(max_plies=1), play_local_match(max_plies=2))
 
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "match.json"
-            save_match_result(result, path)
-            loaded = load_match_result(path)
+            path = Path(directory) / "games.jsonl"
+            save_match_results_jsonl(results, path)
+            loaded = load_match_results_jsonl(path)
 
-        self.assertEqual(loaded, result)
+        self.assertEqual(loaded, results)
 
 
 if __name__ == "__main__":
