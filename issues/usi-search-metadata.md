@@ -7,8 +7,10 @@ Status: open.
 `ShogiGameRecord` currently stores players, moves, winner, and end reason, but
 the USI wrapper discards search metadata emitted through `info ...` lines.
 
-This is sufficient for a minimal raw game log, but it is weak for using USI
-engines as teacher data sources. Engine strength, teacher confidence, candidate
+This is weak for using USI engines as teacher data sources. Game logs are
+source records for later learning-data conversion, so information that may
+affect source priority, filtering, weighting, or target construction should not
+be dropped at log time. Engine strength, teacher confidence, candidate
 distribution, and value-like signals often live in per-move search metadata,
 not only in the final `bestmove`.
 
@@ -42,8 +44,10 @@ not only in the final `bestmove`.
 
 ## Candidate Direction
 
-Keep the default game log small, but add an explicit path for recording selected
-per-move USI search metadata when generating teacher data.
+Keep the structure simple, but prefer preserving raw-ish USI search metadata
+over minimizing log size. The log should remain a source record, not a
+training-ready example, but it should retain enough per-move metadata for later
+conversion decisions.
 
 The first useful scope is:
 
@@ -64,10 +68,9 @@ policy targets, value targets, source priority, filtering, or weights.
 
 This issue can close when:
 
-- external USI process calls can optionally return the selected `info ...`
-  metadata alongside `bestmove`,
-- game logs can preserve per-move search metadata without making it mandatory
-  for simple self-play records,
+- external USI process calls return selected `info ...` metadata alongside
+  `bestmove` when the engine emits it,
+- game logs preserve per-move search metadata when available,
 - tests cover `score`, `depth`, `nodes`, `pv`, and `multipv` parsing or
   preservation, and
 - the resulting JSONL remains readable by `intelligence-representation` as a
