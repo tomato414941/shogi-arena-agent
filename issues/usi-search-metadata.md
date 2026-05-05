@@ -44,20 +44,19 @@ not only in the final `bestmove`.
 
 ## Candidate Direction
 
-Keep the structure simple, but prefer preserving raw-ish USI search metadata
+Keep the structure simple, but prefer preserving USI search metadata as emitted
 over minimizing log size. The log should remain a source record, not a
-training-ready example, but it should retain enough per-move metadata for later
-conversion decisions.
+training-ready example. Do not collapse multiple `info ...` lines into a single
+final or best value at log time; later conversion code can decide which fields
+or lines to use.
 
 The first useful scope is:
 
+- raw `info ...` lines emitted before each `bestmove`
+- parsed views for common fields when useful, such as score, depth, seldepth,
+  nodes, nps, time, pv, and multipv
 - bestmove
 - ponder move, if present
-- final or best available score
-- final or best available depth
-- final or best available nodes
-- principal variation
-- MultiPV candidate lines when enabled
 
 Do not try to model every USI option up front. The runtime repository should
 capture raw enough metadata for later learning-data conversion, while
@@ -68,8 +67,8 @@ policy targets, value targets, source priority, filtering, or weights.
 
 This issue can close when:
 
-- external USI process calls return selected `info ...` metadata alongside
-  `bestmove` when the engine emits it,
+- external USI process calls preserve emitted `info ...` lines alongside
+  `bestmove`,
 - game logs preserve per-move search metadata when available,
 - tests cover `score`, `depth`, `nodes`, `pv`, and `multipv` parsing or
   preservation, and
