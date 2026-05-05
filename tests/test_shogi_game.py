@@ -33,7 +33,7 @@ class ShogiGameTest(unittest.TestCase):
         result = play_shogi_game(max_plies=6)
 
         self.assertEqual(result.end_reason, "max_plies")
-        self.assertEqual(len(result.moves), 6)
+        self.assertEqual(len(result.plies), 6)
         self.assertEqual(result.black_player.name, "black")
         self.assertEqual(result.white_player.name, "white")
         self.assertIsNone(result.winner)
@@ -58,7 +58,7 @@ class ShogiGameTest(unittest.TestCase):
         )
 
         self.assertEqual(result.end_reason, "illegal_move")
-        self.assertEqual(result.moves, ("7g7f",))
+        self.assertEqual(tuple(ply.bestmove for ply in result.plies), ("7g7f",))
         self.assertEqual(result.winner, "black")
 
     def test_game_stops_on_resign(self) -> None:
@@ -69,7 +69,7 @@ class ShogiGameTest(unittest.TestCase):
         )
 
         self.assertEqual(result.end_reason, "resign")
-        self.assertEqual(result.moves, ())
+        self.assertEqual(result.plies, ())
         self.assertEqual(result.winner, "white")
 
     def test_shogi_game_records_jsonl_round_trip(self) -> None:
@@ -81,6 +81,20 @@ class ShogiGameTest(unittest.TestCase):
             loaded = load_shogi_game_records_jsonl(path)
 
         self.assertEqual(loaded, results)
+
+    def test_shogi_game_record_json_uses_plies_as_source_of_truth(self) -> None:
+        results = (
+            play_shogi_game(max_plies=1),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "games.jsonl"
+            save_shogi_game_records_jsonl(results, path)
+            payload = path.read_text(encoding="utf-8")
+
+        self.assertIn('"plies"', payload)
+        self.assertIn('"bestmove"', payload)
+        self.assertNotIn('"moves"', payload)
 
 
 if __name__ == "__main__":

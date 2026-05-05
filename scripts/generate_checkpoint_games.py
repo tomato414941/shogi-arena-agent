@@ -116,7 +116,7 @@ def _records_summary(records: tuple[ShogiGameRecord, ...]) -> dict[str, Any]:
     return {
         "game_count": len(records),
         "end_reasons": dict(end_reasons),
-        "average_plies": sum(len(record.moves) for record in records) / len(records) if records else 0.0,
+        "average_plies": sum(len(record.plies) for record in records) / len(records) if records else 0.0,
         "black_wins": sum(1 for record in records if record.winner == "black"),
         "white_wins": sum(1 for record in records if record.winner == "white"),
         "draws": sum(1 for record in records if record.winner is None),

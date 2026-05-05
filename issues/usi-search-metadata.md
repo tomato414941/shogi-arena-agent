@@ -1,11 +1,11 @@
 # USI Search Metadata In Game Logs
 
-Status: open.
+Status: closed.
 
 ## Issue
 
-`ShogiGameRecord` currently stores players, moves, winner, and end reason, but
-the USI wrapper discards search metadata emitted through `info ...` lines.
+`ShogiGameRecord` previously stored players, moves, winner, and end reason, but
+the USI wrapper discarded search metadata emitted through `info ...` lines.
 
 This is weak for using USI engines as teacher data sources. Game logs are
 source records for later learning-data conversion, so information that may
@@ -14,7 +14,7 @@ be dropped at log time. Engine strength, teacher confidence, candidate
 distribution, and value-like signals often live in per-move search metadata,
 not only in the final `bestmove`.
 
-## Currently Used
+## Implemented
 
 - `usi` / `usiok`
 - `isready` / `readyok`
@@ -23,23 +23,15 @@ not only in the final `bestmove`.
 - configurable `go ...`
 - `bestmove`
 - `bestmove resign`
+- ponder move from `bestmove ... ponder ...`
+- raw `info ...` lines emitted before each `bestmove`
 - player settings recorded by this repository, such as command, go command,
   checkpoint, policy, and MCTS simulations
 
-## Currently Ignored Or Dropped
+## Remaining Outside This Issue
 
 - `id name` and `id author`
 - `option name ...`
-- `info score cp ...`
-- `info score mate ...`
-- `info pv ...`
-- `info depth ...`
-- `info seldepth ...`
-- `info nodes ...`
-- `info nps ...`
-- `info time ...`
-- `info multipv ...`
-- ponder move from `bestmove ... ponder ...`
 - `bestmove win`
 
 ## Candidate Direction
@@ -65,7 +57,7 @@ policy targets, value targets, source priority, filtering, or weights.
 
 ## Acceptance Criteria
 
-This issue can close when:
+This issue is closed because:
 
 - external USI process calls preserve emitted `info ...` lines alongside
   `bestmove`,

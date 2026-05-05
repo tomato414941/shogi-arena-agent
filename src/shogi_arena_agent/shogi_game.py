@@ -9,6 +9,7 @@ from typing import Protocol, cast
 import shogi
 
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine
+from shogi_arena_agent.usi_process import UsiGoResult
 
 
 @dataclass(frozen=True)
@@ -19,10 +20,19 @@ class PlayerSpec:
 
 
 @dataclass(frozen=True)
+class ShogiGamePlyRecord:
+    side: str
+    position: str
+    bestmove: str
+    ponder: str | None = None
+    usi_info_lines: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ShogiGameRecord:
     black_player: PlayerSpec
     white_player: PlayerSpec
-    moves: tuple[str, ...]
+    plies: tuple[ShogiGamePlyRecord, ...]
     end_reason: str
     winner: str | None = None
 
@@ -46,7 +56,7 @@ def load_shogi_game_records_jsonl(path: str | Path) -> tuple[ShogiGameRecord, ..
 
 def shogi_game_record_to_json(result: ShogiGameRecord) -> dict[str, object]:
     return {
-        "moves": list(result.moves),
+        "plies": [_ply_record_to_json(ply) for ply in result.plies],
         "end_reason": result.end_reason,
         "winner": result.winner,
         "black_player": _player_spec_to_json(result.black_player),
@@ -58,7 +68,7 @@ def shogi_game_record_from_json(data: dict[str, object]) -> ShogiGameRecord:
     return ShogiGameRecord(
         black_player=_player_spec_from_json(_object_dict(data["black_player"])),
         white_player=_player_spec_from_json(_object_dict(data["white_player"])),
-        moves=tuple(str(move) for move in cast(list[object], data["moves"])),
+        plies=tuple(_ply_record_from_json(_object_dict(ply)) for ply in cast(list[object], data["plies"])),
         end_reason=str(data["end_reason"]),
         winner=None if data.get("winner") is None else str(data["winner"]),
     )
@@ -68,8 +78,8 @@ class ShogiPlayer(Protocol):
     def position(self, command: str) -> None:
         """Set the current USI position."""
 
-    def go(self) -> str:
-        """Return a USI bestmove."""
+    def go(self) -> str | UsiGoResult:
+        """Return a USI bestmove or full go result."""
 
 
 class InProcessShogiPlayer:
@@ -79,11 +89,11 @@ class InProcessShogiPlayer:
     def position(self, command: str) -> None:
         self.engine.handle_line(command)
 
-    def go(self) -> str:
+    def go(self) -> UsiGoResult:
         response = self.engine.handle_line("go btime 0 wtime 0")
         if len(response) != 1 or not response[0].startswith("bestmove "):
-            return RESIGN_MOVE
-        return response[0].removeprefix("bestmove ")
+            return UsiGoResult(bestmove=RESIGN_MOVE)
+        return _go_result_from_bestmove_line(response[0])
 
 
 def position_command(moves: tuple[str, ...]) -> str:
@@ -109,18 +119,22 @@ def play_shogi_game(
     ]
     black_spec = black_player or _default_player_spec(black_engine, side="black")
     white_spec = white_player or _default_player_spec(white_engine, side="white")
-    moves: list[str] = []
+    plies: list[ShogiGamePlyRecord] = []
 
     for ply in range(max_plies):
         player = players[ply % 2]
-        player.position(position_command(tuple(moves)))
-        move = player.go()
+        moves = tuple(record.bestmove for record in plies)
+        position = position_command(moves)
+        side = "black" if board.turn == shogi.BLACK else "white"
+        player.position(position)
+        go_result = _coerce_go_result(player.go())
+        move = go_result.bestmove
         if move == RESIGN_MOVE:
             winner = "white" if board.turn == shogi.BLACK else "black"
             return ShogiGameRecord(
                 black_player=black_spec,
                 white_player=white_spec,
-                moves=tuple(moves),
+                plies=tuple(plies),
                 end_reason="resign",
                 winner=winner,
             )
@@ -131,19 +145,27 @@ def play_shogi_game(
             return ShogiGameRecord(
                 black_player=black_spec,
                 white_player=white_spec,
-                moves=tuple(moves),
+                plies=tuple(plies),
                 end_reason="illegal_move",
                 winner=winner,
             )
 
+        plies.append(
+            ShogiGamePlyRecord(
+                side=side,
+                position=position,
+                bestmove=move,
+                ponder=go_result.ponder,
+                usi_info_lines=go_result.info_lines,
+            )
+        )
         board.push_usi(move)
-        moves.append(move)
         if board.is_game_over():
             winner = "black" if board.turn == shogi.WHITE else "white"
             return ShogiGameRecord(
                 black_player=black_spec,
                 white_player=white_spec,
-                moves=tuple(moves),
+                plies=tuple(plies),
                 end_reason="game_over",
                 winner=winner,
             )
@@ -151,7 +173,7 @@ def play_shogi_game(
     return ShogiGameRecord(
         black_player=black_spec,
         white_player=white_spec,
-        moves=tuple(moves),
+        plies=tuple(plies),
         end_reason="max_plies",
     )
 
@@ -174,6 +196,38 @@ def _player_spec_to_json(spec: PlayerSpec) -> dict[str, object]:
         "name": spec.name,
         "settings": spec.settings,
     }
+
+
+def _ply_record_to_json(record: ShogiGamePlyRecord) -> dict[str, object]:
+    return {
+        "side": record.side,
+        "position": record.position,
+        "bestmove": record.bestmove,
+        "ponder": record.ponder,
+        "usi_info_lines": list(record.usi_info_lines),
+    }
+
+
+def _ply_record_from_json(data: dict[str, object]) -> ShogiGamePlyRecord:
+    return ShogiGamePlyRecord(
+        side=str(data["side"]),
+        position=str(data["position"]),
+        bestmove=str(data["bestmove"]),
+        ponder=None if data.get("ponder") is None else str(data["ponder"]),
+        usi_info_lines=tuple(str(line) for line in cast(list[object], data.get("usi_info_lines", []))),
+    )
+
+
+def _coerce_go_result(result: str | UsiGoResult) -> UsiGoResult:
+    if isinstance(result, UsiGoResult):
+        return result
+    return UsiGoResult(bestmove=result)
+
+
+def _go_result_from_bestmove_line(line: str) -> UsiGoResult:
+    words = line.removeprefix("bestmove ").split()
+    ponder = words[2] if len(words) >= 3 and words[1] == "ponder" else None
+    return UsiGoResult(bestmove=words[0], ponder=ponder)
 
 
 def _player_spec_from_json(data: dict[str, object]) -> PlayerSpec:

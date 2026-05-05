@@ -4,8 +4,16 @@ import subprocess
 import sys
 import queue
 import threading
+from dataclasses import dataclass
 from collections.abc import Sequence
 from types import TracebackType
+
+
+@dataclass(frozen=True)
+class UsiGoResult:
+    bestmove: str
+    ponder: str | None = None
+    info_lines: tuple[str, ...] = ()
 
 
 class UsiProcess:
@@ -58,7 +66,7 @@ class UsiProcess:
     def position(self, command: str) -> None:
         self._send(command)
 
-    def go(self) -> str:
+    def go(self) -> UsiGoResult:
         self._send(self.go_command)
         return self._read_bestmove()
 
@@ -94,11 +102,17 @@ class UsiProcess:
             if line == expected:
                 return lines
 
-    def _read_bestmove(self) -> str:
+    def _read_bestmove(self) -> UsiGoResult:
+        info_lines: list[str] = []
         while True:
             line = self._read_line()
+            if line.startswith("info "):
+                info_lines.append(line)
+                continue
             if line.startswith("bestmove "):
-                return line.removeprefix("bestmove ").split()[0]
+                words = line.removeprefix("bestmove ").split()
+                ponder = words[2] if len(words) >= 3 and words[1] == "ponder" else None
+                return UsiGoResult(bestmove=words[0], ponder=ponder, info_lines=tuple(info_lines))
 
     def _read_line(self) -> str:
         process = self._running_process()

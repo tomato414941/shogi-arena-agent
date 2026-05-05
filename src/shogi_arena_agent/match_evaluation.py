@@ -149,7 +149,7 @@ def _summarize_match_results(results: list[ShogiGameRecord], player_sides: list[
         player_black_losses=player_black_losses,
         player_white_wins=player_white_wins,
         player_white_losses=player_white_losses,
-        average_plies=sum(len(result.moves) for result in results) / game_count,
+        average_plies=sum(len(result.plies) for result in results) / game_count,
         illegal_move_count=end_reasons.get("illegal_move", 0),
         results=tuple(results),
     )
