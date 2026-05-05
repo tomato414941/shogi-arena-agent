@@ -33,9 +33,9 @@ class ShogiMoveChoiceCheckpointPolicy(RankedMovePolicy):
     def from_checkpoint(cls, checkpoint_path: str | Path, *, device: str = "cpu") -> ShogiMoveChoiceCheckpointPolicy:
         try:
             import torch
-            from intrep.shogi.move_encoding import shogi_candidate_move_features
-            from intrep.shogi.position_encoding import shogi_position_token_ids_from_sfen
             from intrep.tasks.shogi_move_choice.checkpoint import load_shogi_move_choice_checkpoint
+            from intrep.worlds.shogi.move_encoding import shogi_candidate_move_features
+            from intrep.worlds.shogi.position_encoding import shogi_position_token_ids_from_sfen
         except ImportError as error:
             raise RuntimeError(
                 "intelligence-representation and torch are required to use shogi move choice checkpoints"
@@ -63,9 +63,9 @@ class ShogiMoveChoiceCheckpointEvaluator:
     def from_checkpoint(cls, checkpoint_path: str | Path, *, device: str = "cpu") -> ShogiMoveChoiceCheckpointEvaluator:
         try:
             import torch
-            from intrep.shogi.move_encoding import shogi_candidate_move_features
-            from intrep.shogi.position_encoding import shogi_position_token_ids_from_sfen
             from intrep.tasks.shogi_move_choice.checkpoint import load_shogi_move_choice_checkpoint
+            from intrep.worlds.shogi.move_encoding import shogi_candidate_move_features
+            from intrep.worlds.shogi.position_encoding import shogi_position_token_ids_from_sfen
         except ImportError as error:
             raise RuntimeError(
                 "intelligence-representation and torch are required to use shogi move choice checkpoints"
