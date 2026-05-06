@@ -6,7 +6,7 @@ from shogi_arena_agent.usi import UsiEngine
 
 
 class MainTest(unittest.TestCase):
-    def test_parse_args_defaults_to_baseline(self) -> None:
+    def test_parse_args_defaults_to_deterministic_legal(self) -> None:
         args = parse_args([])
 
         self.assertIsNone(args.checkpoint)

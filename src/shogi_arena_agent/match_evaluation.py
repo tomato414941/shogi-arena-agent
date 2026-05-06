@@ -32,7 +32,7 @@ class MatchEvaluation:
     results: tuple[ShogiGameRecord, ...]
 
 
-def evaluate_player_against_baseline(
+def evaluate_player_against_deterministic_legal(
     player: ShogiPlayer | UsiEngine,
     *,
     game_count: int = 2,
@@ -49,17 +49,17 @@ def evaluate_player_against_baseline(
         if game_index % 2 == 0:
             result = play_shogi_game(
                 black=player,
-                white=UsiEngine(name="baseline-white"),
+                white=UsiEngine(name="deterministic-legal-white"),
                 black_actor=player_actor,
-                white_actor=ShogiActorSpec(kind="baseline", name="baseline-white", settings={}),
+                white_actor=ShogiActorSpec(kind="deterministic_legal", name="deterministic-legal-white", settings={}),
                 max_plies=max_plies,
             )
             player_sides.append("black")
         else:
             result = play_shogi_game(
-                black=UsiEngine(name="baseline-black"),
+                black=UsiEngine(name="deterministic-legal-black"),
                 white=player,
-                black_actor=ShogiActorSpec(kind="baseline", name="baseline-black", settings={}),
+                black_actor=ShogiActorSpec(kind="deterministic_legal", name="deterministic-legal-black", settings={}),
                 white_actor=player_actor,
                 max_plies=max_plies,
             )

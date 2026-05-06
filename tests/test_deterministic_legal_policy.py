@@ -1,6 +1,6 @@
 import unittest
 
-from shogi_arena_agent.baseline_policy import DeterministicLegalMovePolicy
+from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 from shogi_arena_agent.usi import UsiPosition, board_from_position
 
 

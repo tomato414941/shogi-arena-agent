@@ -39,7 +39,7 @@ def board_from_position(position: UsiPosition) -> shogi.Board:
 
 class UsiEngine:
     def __init__(self, *, name: str = "shogi-arena-agent", author: str = "intrep", policy: MovePolicy | None = None) -> None:
-        from shogi_arena_agent.baseline_policy import DeterministicLegalMovePolicy
+        from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 
         self.name = name
         self.author = author

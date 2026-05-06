@@ -7,7 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from shogi_arena_agent.match_evaluation import evaluate_player_against_baseline, evaluate_player_against_usi_engine
+from shogi_arena_agent.match_evaluation import evaluate_player_against_deterministic_legal, evaluate_player_against_usi_engine
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.multipv_policy import (
@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Play shogi games and write raw game logs.")
     parser.add_argument(
         "--matchup",
-        choices=("checkpoint-baseline", "checkpoint-yaneuraou", "checkpoint-self", "yaneuraou-self"),
+        choices=("checkpoint-deterministic-legal", "checkpoint-yaneuraou", "checkpoint-self", "yaneuraou-self"),
         default="checkpoint-yaneuraou",
     )
     parser.add_argument("--checkpoint")
@@ -57,11 +57,11 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(_records_summary(records), indent=2))
         return
 
-    if args.matchup == "checkpoint-baseline":
+    if args.matchup == "checkpoint-deterministic-legal":
         if not args.checkpoint:
-            parser.error("--checkpoint is required when --matchup checkpoint-baseline")
+            parser.error("--checkpoint is required when --matchup checkpoint-deterministic-legal")
         player = UsiEngine(name=f"checkpoint-{args.policy}", policy=_load_policy(args.checkpoint, args))
-        evaluation = evaluate_player_against_baseline(
+        evaluation = evaluate_player_against_deterministic_legal(
             player,
             game_count=args.games,
             max_plies=args.max_plies,

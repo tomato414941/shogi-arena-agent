@@ -1,13 +1,13 @@
 import unittest
 import sys
 
-from shogi_arena_agent.match_evaluation import evaluate_player_against_baseline, evaluate_player_against_usi_engine
+from shogi_arena_agent.match_evaluation import evaluate_player_against_deterministic_legal, evaluate_player_against_usi_engine
 from shogi_arena_agent.usi import UsiEngine
 
 
 class MatchEvaluationTest(unittest.TestCase):
     def test_evaluates_player_on_both_sides(self) -> None:
-        evaluation = evaluate_player_against_baseline(UsiEngine(), game_count=2, max_plies=4)
+        evaluation = evaluate_player_against_deterministic_legal(UsiEngine(), game_count=2, max_plies=4)
 
         self.assertEqual(evaluation.game_count, 2)
         self.assertEqual(evaluation.black_game_count, 1)
@@ -20,7 +20,7 @@ class MatchEvaluationTest(unittest.TestCase):
         self.assertEqual(evaluation.draws, 2)
         self.assertEqual(len(evaluation.results), 2)
         self.assertEqual(evaluation.results[0].black_actor.name, "shogi-arena-agent")
-        self.assertEqual(evaluation.results[0].white_actor.kind, "baseline")
+        self.assertEqual(evaluation.results[0].white_actor.kind, "deterministic_legal")
 
     def test_evaluates_player_against_external_usi_engine(self) -> None:
         evaluation = evaluate_player_against_usi_engine(

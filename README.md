@@ -40,7 +40,7 @@ intelligence-representation
 1. Define the minimal inference boundary for a shogi position.
 2. Load a local placeholder policy and return a legal move.
 3. Wrap that policy behind a USI-compatible process.
-4. Run local games against a baseline engine.
+4. Run local games against a deterministic legal-move engine.
 5. Evaluate Lishogi Bot integration.
 
 ## Local USI Smoke
@@ -60,14 +60,14 @@ readyok
 bestmove <legal-usi-move>
 ```
 
-The default baseline policy is intentionally simple: it reconstructs the current
+The default deterministic legal-move policy is intentionally simple: it reconstructs the current
 board with `python-shogi` and returns one deterministic legal move.
 
 ## Checkpoint Policy
 
 `ShogiMoveChoiceCheckpointPolicy` loads a shogi move-choice checkpoint exported
 by `intelligence-representation` and ranks the current legal moves. The import is
-lazy, so the default USI baseline does not require the research repository or
+lazy, so the default USI deterministic legal-move policy does not require the research repository or
 PyTorch.
 
 Install the optional model dependencies only when running checkpoint-backed

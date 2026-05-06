@@ -10,7 +10,7 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
-from shogi_arena_agent.baseline_policy import DeterministicLegalMovePolicy
+from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 from shogi_arena_agent.shogi_game import load_shogi_game_records_jsonl
 
 
@@ -58,7 +58,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             module.main(["--checkpoint", "model.pt", "--matchup", "checkpoint-yaneuraou", "--out", "games.jsonl"])
 
-    def test_checkpoint_baseline_writes_game_records(self) -> None:
+    def test_checkpoint_deterministic_legal_writes_game_records(self) -> None:
         module = _load_script_module()
         original_load_policy = module._load_policy
         module._load_policy = lambda _checkpoint, _args: DeterministicLegalMovePolicy()
@@ -73,7 +73,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                             "--checkpoint",
                             "model.pt",
                             "--matchup",
-                            "checkpoint-baseline",
+                            "checkpoint-deterministic-legal",
                             "--games",
                             "2",
                             "--max-plies",
@@ -90,8 +90,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0].black_actor.kind, "checkpoint")
-        self.assertEqual(records[0].white_actor.kind, "baseline")
-        self.assertEqual(records[1].black_actor.kind, "baseline")
+        self.assertEqual(records[0].white_actor.kind, "deterministic_legal")
+        self.assertEqual(records[1].black_actor.kind, "deterministic_legal")
         self.assertEqual(records[1].white_actor.kind, "checkpoint")
         self.assertEqual(summary["game_count"], 2)
 
