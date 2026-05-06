@@ -19,8 +19,8 @@ class MatchEvaluationTest(unittest.TestCase):
         self.assertEqual(evaluation.player_losses, 0)
         self.assertEqual(evaluation.draws, 2)
         self.assertEqual(len(evaluation.results), 2)
-        self.assertEqual(evaluation.results[0].black_player.name, "shogi-arena-agent")
-        self.assertEqual(evaluation.results[0].white_player.kind, "baseline")
+        self.assertEqual(evaluation.results[0].black_actor.name, "shogi-arena-agent")
+        self.assertEqual(evaluation.results[0].white_actor.kind, "baseline")
 
     def test_evaluates_player_against_external_usi_engine(self) -> None:
         evaluation = evaluate_player_against_usi_engine(
@@ -61,7 +61,7 @@ class MatchEvaluationTest(unittest.TestCase):
 
         self.assertEqual(evaluation.game_count, 1)
         self.assertEqual(evaluation.illegal_move_count, 0)
-        self.assertEqual(evaluation.results[0].white_player.settings["go_command"], "go nodes 1")
+        self.assertEqual(evaluation.results[0].white_actor.settings["go_command"], "go nodes 1")
 
     def test_counts_player_wins_and_losses(self) -> None:
         command = [

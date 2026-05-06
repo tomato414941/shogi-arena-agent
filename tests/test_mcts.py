@@ -63,7 +63,7 @@ class MctsPolicyTest(unittest.TestCase):
         result = play_shogi_game(black=player, white=UsiEngine(), max_plies=4)
 
         self.assertEqual(result.end_reason, "max_plies")
-        self.assertEqual(len(result.plies), 4)
+        self.assertEqual(len(result.transitions), 4)
 
     def test_rejects_invalid_config(self) -> None:
         with self.assertRaises(ValueError):

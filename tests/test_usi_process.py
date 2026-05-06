@@ -99,7 +99,7 @@ class UsiProcessTest(unittest.TestCase):
             result = play_shogi_game(black=black, white=white, max_plies=4)
 
         self.assertEqual(result.end_reason, "max_plies")
-        self.assertEqual(len(result.plies), 4)
+        self.assertEqual(len(result.transitions), 4)
 
     def test_start_times_out_when_process_does_not_answer(self) -> None:
         command = [sys.executable, "-c", "import time; time.sleep(10)"]

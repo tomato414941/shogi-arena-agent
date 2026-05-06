@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 
 from shogi_arena_agent.shogi_game import (
-    PlayerSpec,
+    ShogiActorSpec,
     load_shogi_game_records_jsonl,
     play_shogi_game,
     position_command,
@@ -33,22 +33,29 @@ class ShogiGameTest(unittest.TestCase):
         result = play_shogi_game(max_plies=6)
 
         self.assertEqual(result.end_reason, "max_plies")
-        self.assertEqual(len(result.plies), 6)
-        self.assertEqual(result.black_player.name, "black")
-        self.assertEqual(result.white_player.name, "white")
+        self.assertEqual(len(result.transitions), 6)
+        self.assertEqual(result.black_actor.name, "black")
+        self.assertEqual(result.white_actor.name, "white")
         self.assertIsNone(result.winner)
+        self.assertTrue(result.initial_position_sfen)
+        self.assertTrue(result.transitions[0].position_sfen)
+        self.assertTrue(result.transitions[0].legal_moves)
+        self.assertEqual(result.transitions[0].action_usi, "1g1f")
+        self.assertTrue(result.transitions[0].next_position_sfen)
+        self.assertEqual(result.transitions[-1].done, True)
+        self.assertEqual(result.transitions[-1].reward, 0.0)
 
-    def test_records_explicit_player_specs(self) -> None:
+    def test_records_explicit_actor_specs(self) -> None:
         result = play_shogi_game(
-            black_player=PlayerSpec(kind="checkpoint", name="model-a", settings={"checkpoint": "a.pt"}),
-            white_player=PlayerSpec(kind="yaneuraou", name="yaneuraou", settings={"go_command": "go nodes 10"}),
+            black_actor=ShogiActorSpec(kind="checkpoint", name="model-a", settings={"checkpoint": "a.pt"}),
+            white_actor=ShogiActorSpec(kind="yaneuraou", name="yaneuraou", settings={"go_command": "go nodes 10"}),
             max_plies=2,
         )
 
-        self.assertEqual(result.black_player.kind, "checkpoint")
-        self.assertEqual(result.black_player.settings["checkpoint"], "a.pt")
-        self.assertEqual(result.white_player.kind, "yaneuraou")
-        self.assertEqual(result.white_player.settings["go_command"], "go nodes 10")
+        self.assertEqual(result.black_actor.kind, "checkpoint")
+        self.assertEqual(result.black_actor.settings["checkpoint"], "a.pt")
+        self.assertEqual(result.white_actor.kind, "yaneuraou")
+        self.assertEqual(result.white_actor.settings["go_command"], "go nodes 10")
 
     def test_game_stops_on_illegal_move(self) -> None:
         result = play_shogi_game(
@@ -58,7 +65,8 @@ class ShogiGameTest(unittest.TestCase):
         )
 
         self.assertEqual(result.end_reason, "illegal_move")
-        self.assertEqual(tuple(ply.bestmove for ply in result.plies), ("7g7f",))
+        self.assertEqual(tuple(transition.action_usi for transition in result.transitions), ("7g7f",))
+        self.assertTrue(result.transitions[-1].done)
         self.assertEqual(result.winner, "black")
 
     def test_game_stops_on_resign(self) -> None:
@@ -69,7 +77,7 @@ class ShogiGameTest(unittest.TestCase):
         )
 
         self.assertEqual(result.end_reason, "resign")
-        self.assertEqual(result.plies, ())
+        self.assertEqual(result.transitions, ())
         self.assertEqual(result.winner, "white")
 
     def test_shogi_game_records_jsonl_round_trip(self) -> None:
@@ -82,7 +90,7 @@ class ShogiGameTest(unittest.TestCase):
 
         self.assertEqual(loaded, results)
 
-    def test_shogi_game_record_json_uses_plies_as_source_of_truth(self) -> None:
+    def test_shogi_game_record_json_uses_transitions_as_source_of_truth(self) -> None:
         results = (
             play_shogi_game(max_plies=1),
         )
@@ -92,8 +100,9 @@ class ShogiGameTest(unittest.TestCase):
             save_shogi_game_records_jsonl(results, path)
             payload = path.read_text(encoding="utf-8")
 
-        self.assertIn('"plies"', payload)
-        self.assertIn('"bestmove"', payload)
+        self.assertIn('"transitions"', payload)
+        self.assertIn('"action_usi"', payload)
+        self.assertIn('"legal_moves"', payload)
         self.assertNotIn('"moves"', payload)
 
 

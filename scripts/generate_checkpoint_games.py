@@ -10,7 +10,7 @@ from typing import Any
 from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
-from shogi_arena_agent.shogi_game import PlayerSpec, ShogiGameRecord, play_shogi_game, save_shogi_game_records_jsonl
+from shogi_arena_agent.shogi_game import ShogiActorSpec, ShogiGameRecord, play_shogi_game, save_shogi_game_records_jsonl
 from shogi_arena_agent.usi import UsiEngine
 
 
@@ -46,12 +46,12 @@ def main(argv: list[str] | None = None) -> None:
         max_plies=args.max_plies,
         engine_go_command=args.engine_go_command,
         read_timeout_seconds=args.read_timeout_seconds,
-        player_spec=PlayerSpec(
+        player_actor=ShogiActorSpec(
             kind="checkpoint",
             name=f"checkpoint-{args.policy}",
             settings=_checkpoint_settings(args.checkpoint, args),
         ),
-        engine_spec=PlayerSpec(
+        engine_actor=ShogiActorSpec(
             kind="yaneuraou",
             name="yaneuraou",
             settings={
@@ -67,12 +67,12 @@ def main(argv: list[str] | None = None) -> None:
 def _play_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
     white_checkpoint = args.white_checkpoint or args.checkpoint
     records: list[ShogiGameRecord] = []
-    black_spec = PlayerSpec(
+    black_spec = ShogiActorSpec(
         kind="checkpoint",
         name=f"checkpoint-{args.policy}-black",
         settings=_checkpoint_settings(args.checkpoint, args),
     )
-    white_spec = PlayerSpec(
+    white_spec = ShogiActorSpec(
         kind="checkpoint",
         name=f"checkpoint-{args.policy}-white",
         settings=_checkpoint_settings(white_checkpoint, args),
@@ -82,8 +82,8 @@ def _play_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
             play_shogi_game(
                 black=UsiEngine(name=black_spec.name, policy=_load_policy(args.checkpoint, args)),
                 white=UsiEngine(name=white_spec.name, policy=_load_policy(white_checkpoint, args)),
-                black_player=black_spec,
-                white_player=white_spec,
+                black_actor=black_spec,
+                white_actor=white_spec,
                 max_plies=args.max_plies,
             )
         )
@@ -116,7 +116,7 @@ def _records_summary(records: tuple[ShogiGameRecord, ...]) -> dict[str, Any]:
     return {
         "game_count": len(records),
         "end_reasons": dict(end_reasons),
-        "average_plies": sum(len(record.plies) for record in records) / len(records) if records else 0.0,
+        "average_plies": sum(len(record.transitions) for record in records) / len(records) if records else 0.0,
         "black_wins": sum(1 for record in records if record.winner == "black"),
         "white_wins": sum(1 for record in records if record.winner == "white"),
         "draws": sum(1 for record in records if record.winner is None),

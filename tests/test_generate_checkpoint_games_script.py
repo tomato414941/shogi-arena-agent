@@ -47,8 +47,8 @@ class GenerateCheckpointGamesScriptTest(unittest.TestCase):
             module._load_policy = original_load_policy
 
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0].black_player.settings["checkpoint"], "black.pt")
-        self.assertEqual(records[0].white_player.settings["checkpoint"], "white.pt")
+        self.assertEqual(records[0].black_actor.settings["checkpoint"], "black.pt")
+        self.assertEqual(records[0].white_actor.settings["checkpoint"], "white.pt")
         self.assertEqual(summary["game_count"], 1)
 
     def test_yaneuraou_opponent_requires_command(self) -> None:

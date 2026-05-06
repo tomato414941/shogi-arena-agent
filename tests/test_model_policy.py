@@ -30,7 +30,7 @@ class RankedMovePolicyTest(unittest.TestCase):
         )
 
         self.assertEqual(result.end_reason, "max_plies")
-        self.assertEqual(len(result.plies), 4)
+        self.assertEqual(len(result.transitions), 4)
 
     def test_checkpoint_evaluator_wraps_position_callable(self) -> None:
         def evaluate_position(position_sfen: str, candidate_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:

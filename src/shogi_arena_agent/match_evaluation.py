@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from shogi_arena_agent.shogi_game import ShogiPlayer, ShogiGameRecord, PlayerSpec, play_shogi_game
+from shogi_arena_agent.shogi_game import ShogiPlayer, ShogiGameRecord, ShogiActorSpec, play_shogi_game
 from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
@@ -32,21 +32,21 @@ def evaluate_player_against_baseline(
     *,
     game_count: int = 2,
     max_plies: int = 64,
-    player_spec: PlayerSpec | None = None,
+    player_actor: ShogiActorSpec | None = None,
 ) -> MatchEvaluation:
     if game_count <= 0:
         raise ValueError("game_count must be positive")
 
     results: list[ShogiGameRecord] = []
     player_sides: list[str] = []
-    player_spec = player_spec or _shogi_player_spec(player, name="player")
+    player_actor = player_actor or _shogi_actor_spec(player, name="player")
     for game_index in range(game_count):
         if game_index % 2 == 0:
             result = play_shogi_game(
                 black=player,
                 white=UsiEngine(name="baseline-white"),
-                black_player=player_spec,
-                white_player=PlayerSpec(kind="baseline", name="baseline-white", settings={}),
+                black_actor=player_actor,
+                white_actor=ShogiActorSpec(kind="baseline", name="baseline-white", settings={}),
                 max_plies=max_plies,
             )
             player_sides.append("black")
@@ -54,8 +54,8 @@ def evaluate_player_against_baseline(
             result = play_shogi_game(
                 black=UsiEngine(name="baseline-black"),
                 white=player,
-                black_player=PlayerSpec(kind="baseline", name="baseline-black", settings={}),
-                white_player=player_spec,
+                black_actor=ShogiActorSpec(kind="baseline", name="baseline-black", settings={}),
+                white_actor=player_actor,
                 max_plies=max_plies,
             )
             player_sides.append("white")
@@ -72,16 +72,16 @@ def evaluate_player_against_usi_engine(
     max_plies: int = 64,
     engine_go_command: str = "go btime 0 wtime 0",
     read_timeout_seconds: float = 5.0,
-    player_spec: PlayerSpec | None = None,
-    engine_spec: PlayerSpec | None = None,
+    player_actor: ShogiActorSpec | None = None,
+    engine_actor: ShogiActorSpec | None = None,
 ) -> MatchEvaluation:
     if game_count <= 0:
         raise ValueError("game_count must be positive")
 
     results: list[ShogiGameRecord] = []
     player_sides: list[str] = []
-    player_spec = player_spec or _shogi_player_spec(player, name="player")
-    external_spec = engine_spec or PlayerSpec(
+    player_actor = player_actor or _shogi_actor_spec(player, name="player")
+    external_actor = engine_actor or ShogiActorSpec(
         kind="usi_process",
         name="external",
         settings={
@@ -100,8 +100,8 @@ def evaluate_player_against_usi_engine(
                 result = play_shogi_game(
                     black=player,
                     white=external_engine,
-                    black_player=player_spec,
-                    white_player=external_spec,
+                    black_actor=player_actor,
+                    white_actor=external_actor,
                     max_plies=max_plies,
                 )
                 player_sides.append("black")
@@ -109,8 +109,8 @@ def evaluate_player_against_usi_engine(
                 result = play_shogi_game(
                     black=external_engine,
                     white=player,
-                    black_player=external_spec,
-                    white_player=player_spec,
+                    black_actor=external_actor,
+                    white_actor=player_actor,
                     max_plies=max_plies,
                 )
                 player_sides.append("white")
@@ -149,13 +149,13 @@ def _summarize_match_results(results: list[ShogiGameRecord], player_sides: list[
         player_black_losses=player_black_losses,
         player_white_wins=player_white_wins,
         player_white_losses=player_white_losses,
-        average_plies=sum(len(result.plies) for result in results) / game_count,
+        average_plies=sum(len(result.transitions) for result in results) / game_count,
         illegal_move_count=end_reasons.get("illegal_move", 0),
         results=tuple(results),
     )
 
 
-def _shogi_player_spec(player: ShogiPlayer | UsiEngine, *, name: str) -> PlayerSpec:
+def _shogi_actor_spec(player: ShogiPlayer | UsiEngine, *, name: str) -> ShogiActorSpec:
     if isinstance(player, UsiEngine):
-        return PlayerSpec(kind="usi_engine", name=player.name, settings={})
-    return PlayerSpec(kind="shogi_player", name=name, settings={})
+        return ShogiActorSpec(kind="usi_engine", name=player.name, settings={})
+    return ShogiActorSpec(kind="shogi_player", name=name, settings={})
