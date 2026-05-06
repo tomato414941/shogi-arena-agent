@@ -141,14 +141,15 @@ Checkpoint-backed games can be written as raw game log JSONL:
 
 ```sh
 uv run --extra model python scripts/generate_shogi_games.py \
-  --checkpoint /path/to/checkpoint.pt \
-  --matchup checkpoint-yaneuraou \
-  --yaneuraou /path/to/YaneuraOu \
-  --policy mcts \
+  --black-kind checkpoint \
+  --black-checkpoint /path/to/checkpoint.pt \
+  --black-checkpoint-policy mcts \
+  --black-checkpoint-simulations 16 \
+  --white-kind yaneuraou \
+  --white-yaneuraou-command /path/to/YaneuraOu \
+  --white-yaneuraou-go-command "go nodes 1" \
   --games 2 \
   --max-plies 80 \
-  --simulations 16 \
-  --engine-go-command "go nodes 1" \
   --out runs/shogi/games.jsonl
 ```
 
@@ -156,9 +157,12 @@ Checkpoint self-play uses the same record format:
 
 ```sh
 uv run --extra model python scripts/generate_shogi_games.py \
-  --checkpoint /path/to/checkpoint.pt \
-  --matchup checkpoint-self \
-  --policy direct \
+  --black-kind checkpoint \
+  --black-checkpoint /path/to/checkpoint.pt \
+  --black-checkpoint-policy direct \
+  --white-kind checkpoint \
+  --white-checkpoint /path/to/checkpoint.pt \
+  --white-checkpoint-policy direct \
   --games 2 \
   --max-plies 80 \
   --out runs/shogi/self-play.jsonl
@@ -168,11 +172,14 @@ YaneuraOu self-play also writes the same record format:
 
 ```sh
 uv run --extra model python scripts/generate_shogi_games.py \
-  --matchup yaneuraou-self \
-  --yaneuraou /path/to/YaneuraOu \
+  --black-kind yaneuraou \
+  --black-yaneuraou-command /path/to/YaneuraOu \
+  --black-yaneuraou-go-command "go nodes 1" \
+  --white-kind yaneuraou \
+  --white-yaneuraou-command /path/to/YaneuraOu \
+  --white-yaneuraou-go-command "go nodes 1" \
   --games 2 \
   --max-plies 80 \
-  --engine-go-command "go nodes 1" \
   --out runs/shogi/yaneuraou-self.jsonl
 ```
 

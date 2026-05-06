@@ -12,112 +12,86 @@ from unittest.mock import patch
 
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 from shogi_arena_agent.shogi_game import load_shogi_game_records_jsonl
+from shogi_arena_agent.usi import UsiEngine
 
 
 class GenerateShogiGamesScriptTest(unittest.TestCase):
-    def test_self_play_writes_game_records(self) -> None:
+    def test_checkpoint_fixed_side_writes_game_records(self) -> None:
         module = _load_script_module()
-        original_load_policy = module._load_policy
-        module._load_policy = lambda _checkpoint, _args: DeterministicLegalMovePolicy()
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                output_path = Path(temp_dir) / "games.jsonl"
-                stdout = io.StringIO()
 
-                with contextlib.redirect_stdout(stdout):
-                    module.main(
-                        [
-                            "--checkpoint",
-                            "black.pt",
-                            "--white-checkpoint",
-                            "white.pt",
-                            "--matchup",
-                            "checkpoint-self",
-                            "--games",
-                            "1",
-                            "--max-plies",
-                            "2",
-                            "--out",
-                            str(output_path),
-                        ]
-                    )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
 
-                records = load_shogi_game_records_jsonl(output_path)
-                summary = json.loads(stdout.getvalue())
-        finally:
-            module._load_policy = original_load_policy
+            with patch(
+                "shogi_arena_agent.player_cli._load_checkpoint_policy",
+                return_value=DeterministicLegalMovePolicy(),
+            ), contextlib.redirect_stdout(stdout):
+                module.main(
+                    [
+                        "--black-kind",
+                        "checkpoint",
+                        "--black-checkpoint",
+                        "black.pt",
+                        "--white-kind",
+                        "checkpoint",
+                        "--white-checkpoint",
+                        "white.pt",
+                        "--games",
+                        "1",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+            summary = json.loads(stdout.getvalue())
 
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].black_actor.settings["checkpoint"], "black.pt")
         self.assertEqual(records[0].white_actor.settings["checkpoint"], "white.pt")
         self.assertEqual(summary["game_count"], 1)
 
-    def test_checkpoint_yaneuraou_requires_command(self) -> None:
+    def test_yaneuraou_requires_command(self) -> None:
         module = _load_script_module()
 
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            module.main(["--checkpoint", "model.pt", "--matchup", "checkpoint-yaneuraou", "--out", "games.jsonl"])
+            module.main(
+                [
+                    "--black-kind",
+                    "yaneuraou",
+                    "--white-kind",
+                    "deterministic_legal",
+                    "--out",
+                    "games.jsonl",
+                ]
+            )
 
-    def test_checkpoint_deterministic_legal_writes_game_records(self) -> None:
-        module = _load_script_module()
-        original_load_policy = module._load_policy
-        module._load_policy = lambda _checkpoint, _args: DeterministicLegalMovePolicy()
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                output_path = Path(temp_dir) / "games.jsonl"
-                stdout = io.StringIO()
-
-                with contextlib.redirect_stdout(stdout):
-                    module.main(
-                        [
-                            "--checkpoint",
-                            "model.pt",
-                            "--matchup",
-                            "checkpoint-deterministic-legal",
-                            "--games",
-                            "2",
-                            "--max-plies",
-                            "2",
-                            "--out",
-                            str(output_path),
-                        ]
-                    )
-
-                records = load_shogi_game_records_jsonl(output_path)
-                summary = json.loads(stdout.getvalue())
-        finally:
-            module._load_policy = original_load_policy
-
-        self.assertEqual(len(records), 2)
-        self.assertEqual(records[0].black_actor.kind, "checkpoint")
-        self.assertEqual(records[0].white_actor.kind, "deterministic_legal")
-        self.assertEqual(records[1].black_actor.kind, "deterministic_legal")
-        self.assertEqual(records[1].white_actor.kind, "checkpoint")
-        self.assertEqual(summary["game_count"], 2)
-
-    def test_self_play_loads_each_checkpoint_once(self) -> None:
+    def test_checkpoint_players_are_loaded_once(self) -> None:
         module = _load_script_module()
         calls: list[str] = []
-        original_load_policy = module._load_policy
 
-        def fake_load_policy(checkpoint: str, _args: object) -> DeterministicLegalMovePolicy:
+        def fake_load_policy(checkpoint: str, **_kwargs: object) -> DeterministicLegalMovePolicy:
             calls.append(checkpoint)
             return DeterministicLegalMovePolicy()
 
-        module._load_policy = fake_load_policy
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                output_path = Path(temp_dir) / "games.jsonl"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
 
+            with patch("shogi_arena_agent.player_cli._load_checkpoint_policy", side_effect=fake_load_policy):
                 with contextlib.redirect_stdout(io.StringIO()):
                     module.main(
                         [
-                            "--checkpoint",
+                            "--black-kind",
+                            "checkpoint",
+                            "--black-checkpoint",
                             "black.pt",
+                            "--white-kind",
+                            "checkpoint",
                             "--white-checkpoint",
                             "white.pt",
-                            "--matchup",
-                            "checkpoint-self",
                             "--games",
                             "3",
                             "--max-plies",
@@ -126,17 +100,46 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                             str(output_path),
                         ]
                     )
-        finally:
-            module._load_policy = original_load_policy
 
         self.assertEqual(calls, ["black.pt", "white.pt"])
 
-    def test_yaneuraou_self_writes_game_records(self) -> None:
+    def test_deterministic_legal_writes_game_records(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                module.main(
+                    [
+                        "--black-kind",
+                        "deterministic_legal",
+                        "--white-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "2",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+            summary = json.loads(stdout.getvalue())
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].black_actor.kind, "deterministic_legal")
+        self.assertEqual(records[0].white_actor.kind, "deterministic_legal")
+        self.assertEqual(summary["game_count"], 2)
+
+    def test_yaneuraou_fixed_side_writes_game_records(self) -> None:
         module = _load_script_module()
 
         class FakeUsiProcess:
             def __init__(self, **_kwargs: object) -> None:
-                self.moves = iter(("7g7f", "3c3d"))
+                self.engine = UsiEngine()
 
             def __enter__(self) -> "FakeUsiProcess":
                 return self
@@ -144,22 +147,26 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             def __exit__(self, *_args: object) -> None:
                 return None
 
-            def position(self, _command: str) -> None:
-                return None
+            def position(self, command: str) -> None:
+                self.engine.handle_line(command)
 
             def go(self) -> str:
-                return next(self.moves, "2g2f")
+                return self.engine.policy.select_move(self.engine.position)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "games.jsonl"
             stdout = io.StringIO()
 
-            with patch.object(module, "UsiProcess", FakeUsiProcess), contextlib.redirect_stdout(stdout):
+            with patch("shogi_arena_agent.player_cli.UsiProcess", FakeUsiProcess), contextlib.redirect_stdout(stdout):
                 module.main(
                     [
-                        "--matchup",
-                        "yaneuraou-self",
-                        "--yaneuraou",
+                        "--black-kind",
+                        "yaneuraou",
+                        "--black-yaneuraou-command",
+                        "engine",
+                        "--white-kind",
+                        "yaneuraou",
+                        "--white-yaneuraou-command",
                         "engine",
                         "--games",
                         "1",

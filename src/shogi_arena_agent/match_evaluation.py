@@ -66,7 +66,7 @@ def evaluate_player_against_deterministic_legal(
             player_sides.append("white")
         results.append(result)
 
-    return _summarize_match_results(results, player_sides)
+    return summarize_match_results(results, player_sides)
 
 
 def evaluate_player_against_usi_engine(
@@ -137,10 +137,10 @@ def evaluate_player_against_usi_engine(
                 player_sides.append("white")
             results.append(result)
 
-    return _summarize_match_results(results, player_sides)
+    return summarize_match_results(results, player_sides)
 
 
-def _summarize_match_results(results: list[ShogiGameRecord], player_sides: list[str]) -> MatchEvaluation:
+def summarize_match_results(results: list[ShogiGameRecord], player_sides: list[str]) -> MatchEvaluation:
     game_count = len(results)
     end_reasons = Counter(result.end_reason for result in results)
     player_wins = sum(1 for result, side in zip(results, player_sides) if result.winner == side)
