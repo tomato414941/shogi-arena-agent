@@ -79,6 +79,8 @@ def main(argv: list[str] | None = None) -> None:
 
 def _play_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
     white_checkpoint = args.white_checkpoint or args.checkpoint
+    black_policy = _load_policy(args.checkpoint, args)
+    white_policy = _load_policy(white_checkpoint, args)
     records: list[ShogiGameRecord] = []
     black_spec = ShogiActorSpec(
         kind="checkpoint",
@@ -93,8 +95,8 @@ def _play_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
     for _game_index in range(args.games):
         records.append(
             play_shogi_game(
-                black=UsiEngine(name=black_spec.name, policy=_load_policy(args.checkpoint, args)),
-                white=UsiEngine(name=white_spec.name, policy=_load_policy(white_checkpoint, args)),
+                black=UsiEngine(name=black_spec.name, policy=black_policy),
+                white=UsiEngine(name=white_spec.name, policy=white_policy),
                 black_actor=black_spec,
                 white_actor=white_spec,
                 max_plies=args.max_plies,

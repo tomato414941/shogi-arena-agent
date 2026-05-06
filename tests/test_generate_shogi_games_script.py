@@ -58,6 +58,42 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             module.main(["--checkpoint", "model.pt", "--matchup", "checkpoint-yaneuraou", "--out", "games.jsonl"])
 
+    def test_self_play_loads_each_checkpoint_once(self) -> None:
+        module = _load_script_module()
+        calls: list[str] = []
+        original_load_policy = module._load_policy
+
+        def fake_load_policy(checkpoint: str, _args: object) -> DeterministicLegalMovePolicy:
+            calls.append(checkpoint)
+            return DeterministicLegalMovePolicy()
+
+        module._load_policy = fake_load_policy
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                output_path = Path(temp_dir) / "games.jsonl"
+
+                with contextlib.redirect_stdout(io.StringIO()):
+                    module.main(
+                        [
+                            "--checkpoint",
+                            "black.pt",
+                            "--white-checkpoint",
+                            "white.pt",
+                            "--matchup",
+                            "checkpoint-self",
+                            "--games",
+                            "3",
+                            "--max-plies",
+                            "1",
+                            "--out",
+                            str(output_path),
+                        ]
+                    )
+        finally:
+            module._load_policy = original_load_policy
+
+        self.assertEqual(calls, ["black.pt", "white.pt"])
+
     def test_yaneuraou_self_writes_game_records(self) -> None:
         module = _load_script_module()
 
