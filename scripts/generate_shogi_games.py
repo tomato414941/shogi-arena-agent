@@ -10,6 +10,11 @@ from typing import Any
 from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
+from shogi_arena_agent.multipv_policy import (
+    MultiPVPolicyTargetConfig,
+    MultiPVPolicyTargetPlayer,
+    configure_multipv_player_options,
+)
 from shogi_arena_agent.shogi_game import ShogiActorSpec, ShogiGameRecord, play_shogi_game, save_shogi_game_records_jsonl
 from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
@@ -120,25 +125,34 @@ def _play_yaneuraou_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecor
             command=[args.yaneuraou],
             go_command=args.engine_go_command,
             read_timeout_seconds=args.read_timeout_seconds,
-            policy_target_multipv=args.engine_policy_target_multipv,
-            policy_target_temperature_cp=args.engine_policy_target_temperature_cp,
         ) as black_engine, UsiProcess(
             command=[args.yaneuraou],
             go_command=args.engine_go_command,
             read_timeout_seconds=args.read_timeout_seconds,
-            policy_target_multipv=args.engine_policy_target_multipv,
-            policy_target_temperature_cp=args.engine_policy_target_temperature_cp,
         ) as white_engine:
+            black_player = _wrap_multipv_policy_target_player(black_engine, args)
+            white_player = _wrap_multipv_policy_target_player(white_engine, args)
             records.append(
                 play_shogi_game(
-                    black=black_engine,
-                    white=white_engine,
+                    black=black_player,
+                    white=white_player,
                     black_actor=black_spec,
                     white_actor=white_spec,
                     max_plies=args.max_plies,
                 )
             )
     return tuple(records)
+
+
+def _wrap_multipv_policy_target_player(player: UsiProcess, args: argparse.Namespace):
+    if args.engine_policy_target_multipv is None:
+        return player
+    config = MultiPVPolicyTargetConfig(
+        multipv=args.engine_policy_target_multipv,
+        temperature_cp=args.engine_policy_target_temperature_cp,
+    )
+    configure_multipv_player_options(player, config)
+    return MultiPVPolicyTargetPlayer(player, config)
 
 
 def _load_policy(checkpoint: str, args: argparse.Namespace) -> Any:

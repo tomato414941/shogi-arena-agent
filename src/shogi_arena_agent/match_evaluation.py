@@ -5,6 +5,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from shogi_arena_agent.shogi_game import ShogiPlayer, ShogiGameRecord, ShogiActorSpec, play_shogi_game
+from shogi_arena_agent.multipv_policy import (
+    MultiPVPolicyTargetConfig,
+    MultiPVPolicyTargetPlayer,
+    configure_multipv_player_options,
+)
 from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
@@ -83,6 +88,14 @@ def evaluate_player_against_usi_engine(
     results: list[ShogiGameRecord] = []
     player_sides: list[str] = []
     player_actor = player_actor or _shogi_actor_spec(player, name="player")
+    multipv_config = (
+        MultiPVPolicyTargetConfig(
+            multipv=engine_policy_target_multipv,
+            temperature_cp=engine_policy_target_temperature_cp,
+        )
+        if engine_policy_target_multipv is not None
+        else None
+    )
     external_actor = engine_actor or ShogiActorSpec(
         kind="usi_process",
         name="external",
@@ -99,13 +112,15 @@ def evaluate_player_against_usi_engine(
             command=engine_command,
             go_command=engine_go_command,
             read_timeout_seconds=read_timeout_seconds,
-            policy_target_multipv=engine_policy_target_multipv,
-            policy_target_temperature_cp=engine_policy_target_temperature_cp,
         ) as external_engine:
+            external_player: ShogiPlayer = external_engine
+            if multipv_config is not None:
+                configure_multipv_player_options(external_engine, multipv_config)
+                external_player = MultiPVPolicyTargetPlayer(external_engine, multipv_config)
             if game_index % 2 == 0:
                 result = play_shogi_game(
                     black=player,
-                    white=external_engine,
+                    white=external_player,
                     black_actor=player_actor,
                     white_actor=external_actor,
                     max_plies=max_plies,
@@ -113,7 +128,7 @@ def evaluate_player_against_usi_engine(
                 player_sides.append("black")
             else:
                 result = play_shogi_game(
-                    black=external_engine,
+                    black=external_player,
                     white=player,
                     black_actor=external_actor,
                     white_actor=player_actor,
