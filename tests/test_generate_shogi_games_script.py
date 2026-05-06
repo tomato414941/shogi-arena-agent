@@ -58,6 +58,43 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             module.main(["--checkpoint", "model.pt", "--matchup", "checkpoint-yaneuraou", "--out", "games.jsonl"])
 
+    def test_checkpoint_baseline_writes_game_records(self) -> None:
+        module = _load_script_module()
+        original_load_policy = module._load_policy
+        module._load_policy = lambda _checkpoint, _args: DeterministicLegalMovePolicy()
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                output_path = Path(temp_dir) / "games.jsonl"
+                stdout = io.StringIO()
+
+                with contextlib.redirect_stdout(stdout):
+                    module.main(
+                        [
+                            "--checkpoint",
+                            "model.pt",
+                            "--matchup",
+                            "checkpoint-baseline",
+                            "--games",
+                            "2",
+                            "--max-plies",
+                            "2",
+                            "--out",
+                            str(output_path),
+                        ]
+                    )
+
+                records = load_shogi_game_records_jsonl(output_path)
+                summary = json.loads(stdout.getvalue())
+        finally:
+            module._load_policy = original_load_policy
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].black_actor.kind, "checkpoint")
+        self.assertEqual(records[0].white_actor.kind, "baseline")
+        self.assertEqual(records[1].black_actor.kind, "baseline")
+        self.assertEqual(records[1].white_actor.kind, "checkpoint")
+        self.assertEqual(summary["game_count"], 2)
+
     def test_self_play_loads_each_checkpoint_once(self) -> None:
         module = _load_script_module()
         calls: list[str] = []

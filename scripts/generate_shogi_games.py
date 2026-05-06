@@ -7,7 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
+from shogi_arena_agent.match_evaluation import evaluate_player_against_baseline, evaluate_player_against_usi_engine
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.multipv_policy import (
@@ -22,7 +22,11 @@ from shogi_arena_agent.usi_process import UsiProcess
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Play shogi games and write raw game logs.")
-    parser.add_argument("--matchup", choices=("checkpoint-yaneuraou", "checkpoint-self", "yaneuraou-self"), default="checkpoint-yaneuraou")
+    parser.add_argument(
+        "--matchup",
+        choices=("checkpoint-baseline", "checkpoint-yaneuraou", "checkpoint-self", "yaneuraou-self"),
+        default="checkpoint-yaneuraou",
+    )
     parser.add_argument("--checkpoint")
     parser.add_argument("--yaneuraou")
     parser.add_argument("--white-checkpoint", help="Checkpoint for white in self-play. Defaults to --checkpoint.")
@@ -51,6 +55,24 @@ def main(argv: list[str] | None = None) -> None:
         records = _play_yaneuraou_self_games(args)
         save_shogi_game_records_jsonl(records, Path(args.out))
         print(json.dumps(_records_summary(records), indent=2))
+        return
+
+    if args.matchup == "checkpoint-baseline":
+        if not args.checkpoint:
+            parser.error("--checkpoint is required when --matchup checkpoint-baseline")
+        player = UsiEngine(name=f"checkpoint-{args.policy}", policy=_load_policy(args.checkpoint, args))
+        evaluation = evaluate_player_against_baseline(
+            player,
+            game_count=args.games,
+            max_plies=args.max_plies,
+            player_actor=ShogiActorSpec(
+                kind="checkpoint",
+                name=f"checkpoint-{args.policy}",
+                settings=_checkpoint_settings(args.checkpoint, args),
+            ),
+        )
+        save_shogi_game_records_jsonl(evaluation.results, Path(args.out))
+        print(json.dumps(_evaluation_summary(evaluation), indent=2))
         return
 
     if not args.checkpoint:
