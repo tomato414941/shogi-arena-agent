@@ -72,6 +72,8 @@ def evaluate_player_against_usi_engine(
     max_plies: int = 64,
     engine_go_command: str = "go btime 0 wtime 0",
     read_timeout_seconds: float = 5.0,
+    engine_policy_target_multipv: int | None = None,
+    engine_policy_target_temperature_cp: float = 100.0,
     player_actor: ShogiActorSpec | None = None,
     engine_actor: ShogiActorSpec | None = None,
 ) -> MatchEvaluation:
@@ -88,6 +90,8 @@ def evaluate_player_against_usi_engine(
             "command": " ".join(engine_command),
             "go_command": engine_go_command,
             "read_timeout_seconds": read_timeout_seconds,
+            "policy_target_multipv": engine_policy_target_multipv,
+            "policy_target_temperature_cp": engine_policy_target_temperature_cp,
         },
     )
     for game_index in range(game_count):
@@ -95,6 +99,8 @@ def evaluate_player_against_usi_engine(
             command=engine_command,
             go_command=engine_go_command,
             read_timeout_seconds=read_timeout_seconds,
+            policy_target_multipv=engine_policy_target_multipv,
+            policy_target_temperature_cp=engine_policy_target_temperature_cp,
         ) as external_engine:
             if game_index % 2 == 0:
                 result = play_shogi_game(

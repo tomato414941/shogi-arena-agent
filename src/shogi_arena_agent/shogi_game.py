@@ -177,7 +177,7 @@ def play_shogi_game(
                 next_position_sfen=board.sfen(),
                 reward=_transition_reward(side=side, winner=winner, done=done),
                 done=done,
-                policy_targets=go_result.policy_targets,
+                policy_targets=_legal_policy_targets(go_result.policy_targets, legal_moves=legal_moves),
                 usi_info_lines=go_result.info_lines,
             )
         )
@@ -268,7 +268,7 @@ def _finalize_transitions(
         next_position_sfen=last.next_position_sfen,
         reward=_transition_reward(side=last.side, winner=winner, done=True),
         done=True,
-        policy_targets=last.policy_targets,
+        policy_targets=_legal_policy_targets(last.policy_targets, legal_moves=last.legal_moves),
         usi_info_lines=last.usi_info_lines,
     )
     return finalized
@@ -278,6 +278,25 @@ def _transition_reward(*, side: str, winner: str | None, done: bool) -> float:
     if not done or winner is None:
         return 0.0
     return 1.0 if side == winner else -1.0
+
+
+def _legal_policy_targets(
+    policy_targets: dict[str, float] | None,
+    *,
+    legal_moves: tuple[str, ...],
+) -> dict[str, float] | None:
+    if policy_targets is None:
+        return None
+    legal_move_set = set(legal_moves)
+    filtered = {
+        move: weight
+        for move, weight in policy_targets.items()
+        if move in legal_move_set and weight > 0.0
+    }
+    total = sum(filtered.values())
+    if total <= 0.0:
+        return None
+    return {move: weight / total for move, weight in filtered.items()}
 
 
 def _coerce_go_result(result: str | UsiGoResult) -> UsiGoResult:

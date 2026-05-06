@@ -90,9 +90,66 @@ class UsiProcessTest(unittest.TestCase):
             ),
         )
 
+    def test_go_builds_policy_targets_from_multipv_info(self) -> None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "for line in sys.stdin:\n"
+                "    line = line.strip()\n"
+                "    if line == 'usi': print('usiok', flush=True)\n"
+                "    elif line == 'isready': print('readyok', flush=True)\n"
+                "    elif line.startswith('go'):\n"
+                "        print('info depth 4 multipv 1 score cp 100 pv 7g7f', flush=True)\n"
+                "        print('info depth 4 multipv 2 score cp 0 pv 2g2f', flush=True)\n"
+                "        print('bestmove 7g7f', flush=True)\n"
+                "    elif line == 'quit': break\n"
+            ),
+        ]
+        with UsiProcess(
+            command=command,
+            policy_target_multipv=2,
+            policy_target_temperature_cp=100.0,
+        ) as process:
+            result = process.go()
+
+        self.assertIsNotNone(result.policy_targets)
+        self.assertGreater(result.policy_targets["7g7f"], result.policy_targets["2g2f"])
+        self.assertAlmostEqual(sum(result.policy_targets.values()), 1.0)
+
+    def test_multipv_policy_targets_convert_mate_score(self) -> None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "for line in sys.stdin:\n"
+                "    line = line.strip()\n"
+                "    if line == 'usi': print('usiok', flush=True)\n"
+                "    elif line == 'isready': print('readyok', flush=True)\n"
+                "    elif line.startswith('go'):\n"
+                "        print('info multipv 1 score mate 3 pv 7g7f', flush=True)\n"
+                "        print('info multipv 2 score cp 900 pv 2g2f', flush=True)\n"
+                "        print('bestmove 7g7f', flush=True)\n"
+                "    elif line == 'quit': break\n"
+            ),
+        ]
+        with UsiProcess(command=command, policy_target_multipv=2) as process:
+            result = process.go()
+
+        self.assertIsNotNone(result.policy_targets)
+        self.assertGreater(result.policy_targets["7g7f"], 0.99)
+
     def test_rejects_non_go_command(self) -> None:
         with self.assertRaises(ValueError):
             UsiProcess(go_command="position startpos")
+
+    def test_rejects_invalid_policy_target_options(self) -> None:
+        with self.assertRaises(ValueError):
+            UsiProcess(policy_target_multipv=0)
+        with self.assertRaises(ValueError):
+            UsiProcess(policy_target_multipv=1, policy_target_temperature_cp=0.0)
 
     def test_process_can_play_shogi_game(self) -> None:
         with UsiProcess() as black, UsiProcess() as white:

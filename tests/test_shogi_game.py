@@ -13,6 +13,7 @@ from shogi_arena_agent.shogi_game import (
 )
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
+from shogi_arena_agent.usi_process import UsiGoResult
 
 
 class IllegalPolicy:
@@ -23,6 +24,21 @@ class IllegalPolicy:
 class ResignPolicy:
     def select_move(self, position: UsiPosition) -> str:
         return RESIGN_MOVE
+
+
+class PolicyTargetPlayer:
+    def position(self, command: str) -> None:
+        pass
+
+    def go(self) -> UsiGoResult:
+        return UsiGoResult(
+            bestmove="7g7f",
+            policy_targets={
+                "7g7f": 2.0,
+                "2g2f": 1.0,
+                "1a1b": 1.0,
+            },
+        )
 
 
 class ShogiGameTest(unittest.TestCase):
@@ -70,6 +86,17 @@ class ShogiGameTest(unittest.TestCase):
         policy_targets = result.transitions[0].policy_targets
         self.assertIsNotNone(policy_targets)
         self.assertAlmostEqual(sum(policy_targets.values()), 1.0)
+
+    def test_filters_policy_targets_to_legal_moves(self) -> None:
+        result = play_shogi_game(black=PolicyTargetPlayer(), white=UsiEngine(), max_plies=1)
+
+        self.assertEqual(
+            result.transitions[0].policy_targets,
+            {
+                "7g7f": 2.0 / 3.0,
+                "2g2f": 1.0 / 3.0,
+            },
+        )
 
     def test_game_stops_on_illegal_move(self) -> None:
         result = play_shogi_game(

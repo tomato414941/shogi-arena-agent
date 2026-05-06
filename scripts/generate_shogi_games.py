@@ -28,6 +28,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--simulations", type=int, default=16)
     parser.add_argument("--engine-go-command", default="go nodes 1")
     parser.add_argument("--read-timeout-seconds", type=float, default=10.0)
+    parser.add_argument("--engine-policy-target-multipv", type=int)
+    parser.add_argument("--engine-policy-target-temperature-cp", type=float, default=100.0)
     args = parser.parse_args(argv)
 
     if args.matchup == "checkpoint-self":
@@ -59,6 +61,8 @@ def main(argv: list[str] | None = None) -> None:
         max_plies=args.max_plies,
         engine_go_command=args.engine_go_command,
         read_timeout_seconds=args.read_timeout_seconds,
+        engine_policy_target_multipv=args.engine_policy_target_multipv,
+        engine_policy_target_temperature_cp=args.engine_policy_target_temperature_cp,
         player_actor=ShogiActorSpec(
             kind="checkpoint",
             name=f"checkpoint-{args.policy}",
@@ -70,6 +74,8 @@ def main(argv: list[str] | None = None) -> None:
             settings={
                 "command": args.yaneuraou,
                 "go_command": args.engine_go_command,
+                "policy_target_multipv": args.engine_policy_target_multipv,
+                "policy_target_temperature_cp": args.engine_policy_target_temperature_cp,
             },
         ),
     )
@@ -114,10 +120,14 @@ def _play_yaneuraou_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecor
             command=[args.yaneuraou],
             go_command=args.engine_go_command,
             read_timeout_seconds=args.read_timeout_seconds,
+            policy_target_multipv=args.engine_policy_target_multipv,
+            policy_target_temperature_cp=args.engine_policy_target_temperature_cp,
         ) as black_engine, UsiProcess(
             command=[args.yaneuraou],
             go_command=args.engine_go_command,
             read_timeout_seconds=args.read_timeout_seconds,
+            policy_target_multipv=args.engine_policy_target_multipv,
+            policy_target_temperature_cp=args.engine_policy_target_temperature_cp,
         ) as white_engine:
             records.append(
                 play_shogi_game(
@@ -154,6 +164,8 @@ def _yaneuraou_actor_spec(args: argparse.Namespace, *, name: str) -> ShogiActorS
             "command": args.yaneuraou,
             "go_command": args.engine_go_command,
             "read_timeout_seconds": args.read_timeout_seconds,
+            "policy_target_multipv": args.engine_policy_target_multipv,
+            "policy_target_temperature_cp": args.engine_policy_target_temperature_cp,
         },
     )
 
