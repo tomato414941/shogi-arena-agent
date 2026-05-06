@@ -12,12 +12,13 @@ from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.shogi_game import ShogiActorSpec, ShogiGameRecord, play_shogi_game, save_shogi_game_records_jsonl
 from shogi_arena_agent.usi import UsiEngine
+from shogi_arena_agent.usi_process import UsiProcess
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Play checkpoint-backed games and write raw game logs.")
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--opponent", choices=("yaneuraou", "self"), default="yaneuraou")
+    parser = argparse.ArgumentParser(description="Play shogi games and write raw game logs.")
+    parser.add_argument("--matchup", choices=("checkpoint-yaneuraou", "checkpoint-self", "yaneuraou-self"), default="checkpoint-yaneuraou")
+    parser.add_argument("--checkpoint")
     parser.add_argument("--yaneuraou")
     parser.add_argument("--white-checkpoint", help="Checkpoint for white in self-play. Defaults to --checkpoint.")
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
@@ -29,14 +30,26 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--read-timeout-seconds", type=float, default=10.0)
     args = parser.parse_args(argv)
 
-    if args.opponent == "self":
+    if args.matchup == "checkpoint-self":
+        if not args.checkpoint:
+            parser.error("--checkpoint is required when --matchup checkpoint-self")
         records = _play_self_games(args)
         save_shogi_game_records_jsonl(records, Path(args.out))
         print(json.dumps(_records_summary(records), indent=2))
         return
 
+    if args.matchup == "yaneuraou-self":
+        if not args.yaneuraou:
+            parser.error("--yaneuraou is required when --matchup yaneuraou-self")
+        records = _play_yaneuraou_self_games(args)
+        save_shogi_game_records_jsonl(records, Path(args.out))
+        print(json.dumps(_records_summary(records), indent=2))
+        return
+
+    if not args.checkpoint:
+        parser.error("--checkpoint is required when --matchup checkpoint-yaneuraou")
     if not args.yaneuraou:
-        parser.error("--yaneuraou is required when --opponent yaneuraou")
+        parser.error("--yaneuraou is required when --matchup checkpoint-yaneuraou")
 
     player = UsiEngine(name=f"checkpoint-{args.policy}", policy=_load_policy(args.checkpoint, args))
     evaluation = evaluate_player_against_usi_engine(
@@ -90,6 +103,32 @@ def _play_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
     return tuple(records)
 
 
+def _play_yaneuraou_self_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
+    records: list[ShogiGameRecord] = []
+    black_spec = _yaneuraou_actor_spec(args, name="yaneuraou-black")
+    white_spec = _yaneuraou_actor_spec(args, name="yaneuraou-white")
+    for _game_index in range(args.games):
+        with UsiProcess(
+            command=[args.yaneuraou],
+            go_command=args.engine_go_command,
+            read_timeout_seconds=args.read_timeout_seconds,
+        ) as black_engine, UsiProcess(
+            command=[args.yaneuraou],
+            go_command=args.engine_go_command,
+            read_timeout_seconds=args.read_timeout_seconds,
+        ) as white_engine:
+            records.append(
+                play_shogi_game(
+                    black=black_engine,
+                    white=white_engine,
+                    black_actor=black_spec,
+                    white_actor=white_spec,
+                    max_plies=args.max_plies,
+                )
+            )
+    return tuple(records)
+
+
 def _load_policy(checkpoint: str, args: argparse.Namespace) -> Any:
     if args.policy == "direct":
         return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint)
@@ -103,6 +142,18 @@ def _checkpoint_settings(checkpoint: str, args: argparse.Namespace) -> dict[str,
         "policy": args.policy,
         "simulations": args.simulations if args.policy == "mcts" else None,
     }
+
+
+def _yaneuraou_actor_spec(args: argparse.Namespace, *, name: str) -> ShogiActorSpec:
+    return ShogiActorSpec(
+        kind="yaneuraou",
+        name=name,
+        settings={
+            "command": args.yaneuraou,
+            "go_command": args.engine_go_command,
+            "read_timeout_seconds": args.read_timeout_seconds,
+        },
+    )
 
 
 def _evaluation_summary(evaluation: Any) -> dict[str, Any]:

@@ -140,9 +140,9 @@ print(evaluation)
 Checkpoint-backed games can be written as raw game log JSONL:
 
 ```sh
-uv run --extra model python scripts/generate_checkpoint_games.py \
+uv run --extra model python scripts/generate_shogi_games.py \
   --checkpoint /path/to/checkpoint.pt \
-  --opponent yaneuraou \
+  --matchup checkpoint-yaneuraou \
   --yaneuraou /path/to/YaneuraOu \
   --policy mcts \
   --games 2 \
@@ -155,13 +155,25 @@ uv run --extra model python scripts/generate_checkpoint_games.py \
 Checkpoint self-play uses the same record format:
 
 ```sh
-uv run --extra model python scripts/generate_checkpoint_games.py \
+uv run --extra model python scripts/generate_shogi_games.py \
   --checkpoint /path/to/checkpoint.pt \
-  --opponent self \
+  --matchup checkpoint-self \
   --policy direct \
   --games 2 \
   --max-plies 80 \
   --out runs/shogi/self-play.jsonl
+```
+
+YaneuraOu self-play also writes the same record format:
+
+```sh
+uv run --extra model python scripts/generate_shogi_games.py \
+  --matchup yaneuraou-self \
+  --yaneuraou /path/to/YaneuraOu \
+  --games 2 \
+  --max-plies 80 \
+  --engine-go-command "go nodes 1" \
+  --out runs/shogi/yaneuraou-self.jsonl
 ```
 
 Local smoke tests can use a material-evaluation YaneuraOu build.
