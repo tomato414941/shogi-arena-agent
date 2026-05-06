@@ -9,6 +9,7 @@ from shogi_arena_agent.shogi_game import (
     position_command,
     save_shogi_game_records_jsonl,
 )
+from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
 
 
@@ -56,6 +57,17 @@ class ShogiGameTest(unittest.TestCase):
         self.assertEqual(result.black_actor.settings["checkpoint"], "a.pt")
         self.assertEqual(result.white_actor.kind, "yaneuraou")
         self.assertEqual(result.white_actor.settings["go_command"], "go nodes 10")
+
+    def test_records_in_process_policy_targets_when_available(self) -> None:
+        result = play_shogi_game(
+            black=UsiEngine(policy=MctsPolicy(config=MctsConfig(simulation_count=4))),
+            white=UsiEngine(),
+            max_plies=1,
+        )
+
+        policy_targets = result.transitions[0].policy_targets
+        self.assertIsNotNone(policy_targets)
+        self.assertAlmostEqual(sum(policy_targets.values()), 1.0)
 
     def test_game_stops_on_illegal_move(self) -> None:
         result = play_shogi_game(

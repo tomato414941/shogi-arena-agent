@@ -42,6 +42,15 @@ class MctsPolicyTest(unittest.TestCase):
 
         self.assertEqual(move, preferred_move)
 
+    def test_records_visit_count_policy_targets(self) -> None:
+        policy = MctsPolicy(config=MctsConfig(simulation_count=8))
+
+        policy.select_move(UsiPosition())
+
+        self.assertIsNotNone(policy.last_policy_targets)
+        self.assertAlmostEqual(sum(policy.last_policy_targets.values()), 1.0)
+        self.assertIn("7g7f", policy.last_policy_targets)
+
     def test_value_guides_search_after_expansion(self) -> None:
         position = UsiPosition(command="position startpos moves 7g7f 3c3d")
 

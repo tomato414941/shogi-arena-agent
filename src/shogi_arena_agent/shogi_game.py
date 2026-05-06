@@ -29,6 +29,7 @@ class ShogiTransitionRecord:
     next_position_sfen: str
     reward: float
     done: bool
+    policy_targets: dict[str, float] | None = None
     usi_info_lines: tuple[str, ...] = ()
 
 
@@ -100,10 +101,9 @@ class InProcessShogiPlayer:
         self.engine.handle_line(command)
 
     def go(self) -> UsiGoResult:
-        response = self.engine.handle_line("go btime 0 wtime 0")
-        if len(response) != 1 or not response[0].startswith("bestmove "):
-            return UsiGoResult(bestmove=RESIGN_MOVE)
-        return _go_result_from_bestmove_line(response[0])
+        move = self.engine.policy.select_move(self.engine.position)
+        policy_targets = getattr(self.engine.policy, "last_policy_targets", None)
+        return UsiGoResult(bestmove=move, policy_targets=policy_targets)
 
 
 def position_command(moves: tuple[str, ...]) -> str:
@@ -177,6 +177,7 @@ def play_shogi_game(
                 next_position_sfen=board.sfen(),
                 reward=_transition_reward(side=side, winner=winner, done=done),
                 done=done,
+                policy_targets=go_result.policy_targets,
                 usi_info_lines=go_result.info_lines,
             )
         )
@@ -229,6 +230,7 @@ def _transition_record_to_json(record: ShogiTransitionRecord) -> dict[str, objec
         "next_position_sfen": record.next_position_sfen,
         "reward": record.reward,
         "done": record.done,
+        "policy_targets": record.policy_targets,
         "usi_info_lines": list(record.usi_info_lines),
     }
 
@@ -243,6 +245,7 @@ def _transition_record_from_json(data: dict[str, object]) -> ShogiTransitionReco
         next_position_sfen=str(data["next_position_sfen"]),
         reward=float(data["reward"]),
         done=bool(data["done"]),
+        policy_targets=_optional_float_dict(data.get("policy_targets")),
         usi_info_lines=tuple(str(line) for line in cast(list[object], data.get("usi_info_lines", []))),
     )
 
@@ -265,6 +268,7 @@ def _finalize_transitions(
         next_position_sfen=last.next_position_sfen,
         reward=_transition_reward(side=last.side, winner=winner, done=True),
         done=True,
+        policy_targets=last.policy_targets,
         usi_info_lines=last.usi_info_lines,
     )
     return finalized
@@ -282,12 +286,6 @@ def _coerce_go_result(result: str | UsiGoResult) -> UsiGoResult:
     return UsiGoResult(bestmove=result)
 
 
-def _go_result_from_bestmove_line(line: str) -> UsiGoResult:
-    words = line.removeprefix("bestmove ").split()
-    ponder = words[2] if len(words) >= 3 and words[1] == "ponder" else None
-    return UsiGoResult(bestmove=words[0], ponder=ponder)
-
-
 def _actor_spec_from_json(data: dict[str, object]) -> ShogiActorSpec:
     settings = data.get("settings", {})
     if not isinstance(settings, dict):
@@ -303,3 +301,10 @@ def _object_dict(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("expected object")
     return value
+
+
+def _optional_float_dict(value: object) -> dict[str, float] | None:
+    if value is None:
+        return None
+    data = _object_dict(value)
+    return {str(key): float(item) for key, item in data.items()}

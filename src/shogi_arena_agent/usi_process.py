@@ -14,6 +14,7 @@ class UsiGoResult:
     bestmove: str
     ponder: str | None = None
     info_lines: tuple[str, ...] = ()
+    policy_targets: dict[str, float] | None = None
 
 
 class UsiProcess:

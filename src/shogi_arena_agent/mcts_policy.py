@@ -44,11 +44,13 @@ class MctsPolicy:
     ) -> None:
         self.evaluator = evaluator or UniformPolicyValueEvaluator()
         self.config = config or MctsConfig()
+        self.last_policy_targets: dict[str, float] | None = None
 
     def select_move(self, position: UsiPosition) -> str:
         board = board_from_position(position)
         legal_moves = _legal_move_usis(board)
         if not legal_moves:
+            self.last_policy_targets = None
             return RESIGN_MOVE
 
         root = _Node(prior=1.0)
@@ -56,6 +58,7 @@ class MctsPolicy:
         for _ in range(self.config.simulation_count):
             self._run_simulation(root, copy.deepcopy(board))
 
+        self.last_policy_targets = _visit_count_policy_targets(root)
         return max(root.children.items(), key=lambda item: (item[1].visit_count, item[1].value_mean, item[0]))[0]
 
     def _run_simulation(self, root: _Node, board: shogi.Board) -> None:
@@ -122,3 +125,10 @@ def _normalize_priors(legal_moves: tuple[str, ...], priors: dict[str, float]) ->
         uniform = 1.0 / len(legal_moves)
         return {move: uniform for move in legal_moves}
     return {move: prior / total for move, prior in positive_priors.items()}
+
+
+def _visit_count_policy_targets(root: _Node) -> dict[str, float]:
+    total = sum(child.visit_count for child in root.children.values())
+    if total <= 0:
+        return _normalize_priors(tuple(root.children), {move: child.prior for move, child in root.children.items()})
+    return {move: child.visit_count / total for move, child in root.children.items()}
