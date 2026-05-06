@@ -1,5 +1,6 @@
 import unittest
 import tempfile
+import json
 from pathlib import Path
 
 from shogi_arena_agent.shogi_game import (
@@ -8,6 +9,7 @@ from shogi_arena_agent.shogi_game import (
     play_shogi_game,
     position_command,
     save_shogi_game_records_jsonl,
+    shogi_game_record_to_json,
 )
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
@@ -116,6 +118,18 @@ class ShogiGameTest(unittest.TestCase):
         self.assertIn('"action_usi"', payload)
         self.assertIn('"legal_moves"', payload)
         self.assertNotIn('"moves"', payload)
+
+    def test_rejects_transition_without_policy_targets_field(self) -> None:
+        result = play_shogi_game(max_plies=1)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "games.jsonl"
+            payload = shogi_game_record_to_json(result)
+            del payload["transitions"][0]["policy_targets"]
+            path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+            with self.assertRaises(KeyError):
+                load_shogi_game_records_jsonl(path)
 
 
 if __name__ == "__main__":

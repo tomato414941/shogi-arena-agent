@@ -29,7 +29,7 @@ class ShogiTransitionRecord:
     next_position_sfen: str
     reward: float
     done: bool
-    policy_targets: dict[str, float] | None = None
+    policy_targets: dict[str, float] | None
     usi_info_lines: tuple[str, ...] = ()
 
 
@@ -245,7 +245,7 @@ def _transition_record_from_json(data: dict[str, object]) -> ShogiTransitionReco
         next_position_sfen=str(data["next_position_sfen"]),
         reward=float(data["reward"]),
         done=bool(data["done"]),
-        policy_targets=_optional_float_dict(data.get("policy_targets")),
+        policy_targets=_optional_float_dict(data["policy_targets"]),
         usi_info_lines=tuple(str(line) for line in cast(list[object], data.get("usi_info_lines", []))),
     )
 
