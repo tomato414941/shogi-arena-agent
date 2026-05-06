@@ -20,3 +20,4 @@
 - 小さく頻繁にコミットする。
 - 実装後は関連テストを実行する。
 - まだ外部サービス接続を自動化しない。まずローカル USI とローカル対局を優先する。
+- ShogiGameRecord schema is mirrored with `../intelligence-representation`; update both repositories' read/write/tests together when changing it.
