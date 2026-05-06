@@ -20,7 +20,7 @@ from shogi_arena_agent.usi_process import UsiGoResult
 
 
 class AnnotateShogiRecordsScriptTest(unittest.TestCase):
-    def test_annotates_records_with_multipv_policy_targets(self) -> None:
+    def test_annotates_records_with_raw_multipv_info(self) -> None:
         module = _load_script_module()
 
         class FakeUsiProcess:
@@ -77,11 +77,8 @@ class AnnotateShogiRecordsScriptTest(unittest.TestCase):
         transition = records[0].transitions[0]
         self.assertEqual(summary["annotated_count"], 1)
         self.assertEqual(summary["annotated_ratio"], 1.0)
-        self.assertIsNotNone(transition.policy_targets)
-        self.assertEqual(set(transition.policy_targets), {"7g7f", "2g2f"})
-        self.assertGreater(transition.policy_targets["7g7f"], transition.policy_targets["2g2f"])
-        self.assertAlmostEqual(sum(transition.policy_targets.values()), 1.0)
         self.assertEqual(transition.usi_info_lines[0], "info multipv 1 score cp 100 pv 7g7f")
+        self.assertEqual(transition.usi_info_lines[1], "info multipv 2 score cp 0 pv 2g2f")
 
 
 def _record() -> ShogiGameRecord:
@@ -109,7 +106,6 @@ def module_transition():
         next_position_sfen="lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
         reward=0.0,
         done=True,
-        policy_targets=None,
     )
 
 

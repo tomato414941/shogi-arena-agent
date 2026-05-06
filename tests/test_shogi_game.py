@@ -11,7 +11,6 @@ from shogi_arena_agent.shogi_game import (
     save_shogi_game_records_jsonl,
     shogi_game_record_to_json,
 )
-from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
 from shogi_arena_agent.usi_process import UsiGoResult
 
@@ -26,18 +25,14 @@ class ResignPolicy:
         return RESIGN_MOVE
 
 
-class PolicyTargetPlayer:
+class InfoLinePlayer:
     def position(self, command: str) -> None:
         pass
 
     def go(self) -> UsiGoResult:
         return UsiGoResult(
             bestmove="7g7f",
-            policy_targets={
-                "7g7f": 2.0,
-                "2g2f": 1.0,
-                "1a1b": 1.0,
-            },
+            info_lines=("info multipv 1 score cp 100 pv 7g7f",),
         )
 
 
@@ -76,26 +71,12 @@ class ShogiGameTest(unittest.TestCase):
         self.assertEqual(result.white_actor.kind, "yaneuraou")
         self.assertEqual(result.white_actor.settings["go_command"], "go nodes 10")
 
-    def test_records_in_process_policy_targets_when_available(self) -> None:
-        result = play_shogi_game(
-            black=UsiEngine(policy=MctsPolicy(config=MctsConfig(simulation_count=4))),
-            white=UsiEngine(),
-            max_plies=1,
-        )
-
-        policy_targets = result.transitions[0].policy_targets
-        self.assertIsNotNone(policy_targets)
-        self.assertAlmostEqual(sum(policy_targets.values()), 1.0)
-
-    def test_filters_policy_targets_to_legal_moves(self) -> None:
-        result = play_shogi_game(black=PolicyTargetPlayer(), white=UsiEngine(), max_plies=1)
+    def test_records_raw_usi_info_lines(self) -> None:
+        result = play_shogi_game(black=InfoLinePlayer(), white=UsiEngine(), max_plies=1)
 
         self.assertEqual(
-            result.transitions[0].policy_targets,
-            {
-                "7g7f": 2.0 / 3.0,
-                "2g2f": 1.0 / 3.0,
-            },
+            result.transitions[0].usi_info_lines,
+            ("info multipv 1 score cp 100 pv 7g7f",),
         )
 
     def test_game_stops_on_illegal_move(self) -> None:
@@ -146,17 +127,18 @@ class ShogiGameTest(unittest.TestCase):
         self.assertIn('"legal_moves"', payload)
         self.assertNotIn('"moves"', payload)
 
-    def test_rejects_transition_without_policy_targets_field(self) -> None:
+    def test_game_record_json_does_not_store_teacher_targets(self) -> None:
         result = play_shogi_game(max_plies=1)
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "games.jsonl"
             payload = shogi_game_record_to_json(result)
-            del payload["transitions"][0]["policy_targets"]
             path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
-            with self.assertRaises(KeyError):
-                load_shogi_game_records_jsonl(path)
+            loaded = load_shogi_game_records_jsonl(path)
+
+        self.assertEqual(loaded, (result,))
+        self.assertNotIn("policy_targets", payload["transitions"][0])
 
 
 if __name__ == "__main__":

@@ -71,13 +71,11 @@ def annotate_shogi_records_with_yaneuraou_multipv(
                 transition_count += 1
                 teacher.position(f"position sfen {transition.position_sfen}")
                 go_result = teacher.go()
-                policy_targets = _legal_policy_targets(go_result.policy_targets, legal_moves=transition.legal_moves)
-                if policy_targets is not None:
+                if go_result.info_lines:
                     annotated_count += 1
                 annotated_transitions.append(
                     replace(
                         transition,
-                        policy_targets=policy_targets,
                         usi_info_lines=go_result.info_lines,
                     )
                 )
@@ -96,26 +94,6 @@ def annotate_shogi_records_with_yaneuraou_multipv(
         "multipv": multipv,
         "temperature_cp": temperature_cp,
     }
-
-
-def _legal_policy_targets(
-    policy_targets: dict[str, float] | None,
-    *,
-    legal_moves: tuple[str, ...],
-) -> dict[str, float] | None:
-    if policy_targets is None:
-        return None
-    legal_move_set = set(legal_moves)
-    filtered = {
-        move: weight
-        for move, weight in policy_targets.items()
-        if move in legal_move_set and weight > 0.0
-    }
-    total = sum(filtered.values())
-    if total <= 0.0:
-        return None
-    return {move: weight / total for move, weight in filtered.items()}
-
 
 if __name__ == "__main__":
     main()

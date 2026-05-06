@@ -29,7 +29,6 @@ class ShogiTransitionRecord:
     next_position_sfen: str
     reward: float
     done: bool
-    policy_targets: dict[str, float] | None
     usi_info_lines: tuple[str, ...] = ()
 
 
@@ -102,8 +101,7 @@ class InProcessShogiPlayer:
 
     def go(self) -> UsiGoResult:
         move = self.engine.policy.select_move(self.engine.position)
-        policy_targets = getattr(self.engine.policy, "last_policy_targets", None)
-        return UsiGoResult(bestmove=move, policy_targets=policy_targets)
+        return UsiGoResult(bestmove=move)
 
 
 def position_command(moves: tuple[str, ...]) -> str:
@@ -177,7 +175,6 @@ def play_shogi_game(
                 next_position_sfen=board.sfen(),
                 reward=_transition_reward(side=side, winner=winner, done=done),
                 done=done,
-                policy_targets=_legal_policy_targets(go_result.policy_targets, legal_moves=legal_moves),
                 usi_info_lines=go_result.info_lines,
             )
         )
@@ -230,7 +227,6 @@ def _transition_record_to_json(record: ShogiTransitionRecord) -> dict[str, objec
         "next_position_sfen": record.next_position_sfen,
         "reward": record.reward,
         "done": record.done,
-        "policy_targets": record.policy_targets,
         "usi_info_lines": list(record.usi_info_lines),
     }
 
@@ -245,7 +241,6 @@ def _transition_record_from_json(data: dict[str, object]) -> ShogiTransitionReco
         next_position_sfen=str(data["next_position_sfen"]),
         reward=float(data["reward"]),
         done=bool(data["done"]),
-        policy_targets=_optional_float_dict(data["policy_targets"]),
         usi_info_lines=tuple(str(line) for line in cast(list[object], data.get("usi_info_lines", []))),
     )
 
@@ -268,7 +263,6 @@ def _finalize_transitions(
         next_position_sfen=last.next_position_sfen,
         reward=_transition_reward(side=last.side, winner=winner, done=True),
         done=True,
-        policy_targets=_legal_policy_targets(last.policy_targets, legal_moves=last.legal_moves),
         usi_info_lines=last.usi_info_lines,
     )
     return finalized
@@ -278,25 +272,6 @@ def _transition_reward(*, side: str, winner: str | None, done: bool) -> float:
     if not done or winner is None:
         return 0.0
     return 1.0 if side == winner else -1.0
-
-
-def _legal_policy_targets(
-    policy_targets: dict[str, float] | None,
-    *,
-    legal_moves: tuple[str, ...],
-) -> dict[str, float] | None:
-    if policy_targets is None:
-        return None
-    legal_move_set = set(legal_moves)
-    filtered = {
-        move: weight
-        for move, weight in policy_targets.items()
-        if move in legal_move_set and weight > 0.0
-    }
-    total = sum(filtered.values())
-    if total <= 0.0:
-        return None
-    return {move: weight / total for move, weight in filtered.items()}
 
 
 def _coerce_go_result(result: str | UsiGoResult) -> UsiGoResult:
@@ -320,10 +295,3 @@ def _object_dict(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("expected object")
     return value
-
-
-def _optional_float_dict(value: object) -> dict[str, float] | None:
-    if value is None:
-        return None
-    data = _object_dict(value)
-    return {str(key): float(item) for key, item in data.items()}
