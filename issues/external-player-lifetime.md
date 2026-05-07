@@ -1,6 +1,6 @@
 # External Player Lifetime
 
-Status: open.
+Status: closed.
 
 ## Issue
 
@@ -29,9 +29,19 @@ process restart.
 Keep a simple fallback path only if a specific engine proves unsafe to reuse.
 Do not add broad lifecycle modes until there is a concrete need.
 
+## Implemented
+
+- Game-generation and evaluation scripts now open player contexts once per
+  command run instead of once per game.
+- Each game still resets the board through the normal `position startpos ...`
+  command path.
+- Tests verify external player contexts are entered once per player for
+  multi-game runs.
+
 ## Acceptance Criteria
 
-- Generating or evaluating multiple games with the same external player does
-  not restart that player once per game by default.
-- Tests verify external player contexts are entered once for a multi-game run.
-- Game records still preserve the same actor settings.
+This issue is closed because:
+
+- generating or evaluating multiple games with the same external player no
+  longer restarts that player once per game by default, and
+- game records still preserve the same actor settings.

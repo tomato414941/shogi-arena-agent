@@ -37,10 +37,10 @@ def _evaluate(args: argparse.Namespace) -> tuple[list[ShogiGameRecord], list[str
     player_sides: list[str] = []
     player_static = build_static_player(args, "player", name="player")
     opponent_static = build_static_player(args, "opponent", name="opponent")
-    for game_index in range(args.games):
-        with ExitStack() as stack:
-            player = stack.enter_context(_player_context(args, "player", name="player", static_player=player_static))
-            opponent = stack.enter_context(_player_context(args, "opponent", name="opponent", static_player=opponent_static))
+    with ExitStack() as stack:
+        player = stack.enter_context(_player_context(args, "player", name="player", static_player=player_static))
+        opponent = stack.enter_context(_player_context(args, "opponent", name="opponent", static_player=opponent_static))
+        for game_index in range(args.games):
             if game_index % 2 == 0:
                 results.append(
                     play_shogi_game(

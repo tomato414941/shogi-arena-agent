@@ -8,8 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import patch
 
 from shogi_arena_agent.shogi_game import load_shogi_game_records_jsonl
+from shogi_arena_agent.usi import UsiEngine
 
 
 class EvaluateShogiPlayersScriptTest(unittest.TestCase):
@@ -47,6 +49,53 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
         self.assertEqual(summary["game_count"], 2)
         self.assertEqual(summary["black_game_count"], 1)
         self.assertEqual(summary["white_game_count"], 1)
+
+    def test_external_players_are_reused_across_games(self) -> None:
+        module = _load_script_module()
+
+        class FakeUsiProcess:
+            enter_count = 0
+
+            def __init__(self, **_kwargs: object) -> None:
+                self.engine = UsiEngine()
+
+            def __enter__(self) -> "FakeUsiProcess":
+                type(self).enter_count += 1
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def position(self, command: str) -> None:
+                self.engine.handle_line(command)
+
+            def go(self) -> str:
+                return self.engine.policy.select_move(self.engine.position)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with patch("shogi_arena_agent.player_cli.UsiProcess", FakeUsiProcess), contextlib.redirect_stdout(io.StringIO()):
+                module.main(
+                    [
+                        "--player-kind",
+                        "yaneuraou",
+                        "--player-yaneuraou-command",
+                        "engine",
+                        "--opponent-kind",
+                        "yaneuraou",
+                        "--opponent-yaneuraou-command",
+                        "engine",
+                        "--games",
+                        "4",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+        self.assertEqual(FakeUsiProcess.enter_count, 2)
 
 
 def _load_script_module() -> ModuleType:

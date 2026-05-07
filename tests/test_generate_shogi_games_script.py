@@ -138,10 +138,13 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         module = _load_script_module()
 
         class FakeUsiProcess:
+            enter_count = 0
+
             def __init__(self, **_kwargs: object) -> None:
                 self.engine = UsiEngine()
 
             def __enter__(self) -> "FakeUsiProcess":
+                type(self).enter_count += 1
                 return self
 
             def __exit__(self, *_args: object) -> None:
@@ -169,7 +172,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "--white-yaneuraou-command",
                         "engine",
                         "--games",
-                        "1",
+                        "3",
                         "--max-plies",
                         "2",
                         "--out",
@@ -180,10 +183,11 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             records = load_shogi_game_records_jsonl(output_path)
             summary = json.loads(stdout.getvalue())
 
-        self.assertEqual(len(records), 1)
+        self.assertEqual(len(records), 3)
         self.assertEqual(records[0].black_actor.kind, "yaneuraou")
         self.assertEqual(records[0].white_actor.kind, "yaneuraou")
-        self.assertEqual(summary["game_count"], 1)
+        self.assertEqual(summary["game_count"], 3)
+        self.assertEqual(FakeUsiProcess.enter_count, 2)
 
 
 def _load_script_module() -> ModuleType:

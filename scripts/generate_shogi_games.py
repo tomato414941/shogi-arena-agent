@@ -34,10 +34,10 @@ def _play_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
     records: list[ShogiGameRecord] = []
     black_static = build_static_player(args, "black", name="black")
     white_static = build_static_player(args, "white", name="white")
-    for _game_index in range(args.games):
-        with ExitStack() as stack:
-            black = stack.enter_context(_player_context(args, "black", name="black", static_player=black_static))
-            white = stack.enter_context(_player_context(args, "white", name="white", static_player=white_static))
+    with ExitStack() as stack:
+        black = stack.enter_context(_player_context(args, "black", name="black", static_player=black_static))
+        white = stack.enter_context(_player_context(args, "white", name="white", static_player=white_static))
+        for _game_index in range(args.games):
             records.append(
                 play_shogi_game(
                     black=black.player,
