@@ -124,17 +124,15 @@ read timeout is applied so a non-responsive engine does not hang the runner.
 Any USI-compatible engine can be used as the opponent process. For example,
 after preparing a YaneuraOu executable:
 
-```python
-from shogi_arena_agent.match_evaluation import evaluate_player_against_usi_engine
-from shogi_arena_agent.usi import UsiEngine
-
-evaluation = evaluate_player_against_usi_engine(
-    UsiEngine(),
-    ["/path/to/YaneuraOu"],
-    game_count=2,
-    max_plies=64,
-)
-print(evaluation)
+```sh
+uv run python scripts/evaluate_shogi_players.py \
+  --player-kind deterministic_legal \
+  --opponent-kind yaneuraou \
+  --opponent-yaneuraou-command /path/to/YaneuraOu \
+  --opponent-yaneuraou-go-command "go nodes 1" \
+  --games 2 \
+  --max-plies 64 \
+  --out runs/shogi/evaluation.jsonl
 ```
 
 Checkpoint-backed games can be written as raw game log JSONL:

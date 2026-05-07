@@ -1,6 +1,6 @@
 # Match Evaluation Responsibility
 
-Status: open.
+Status: closed.
 
 ## Issue
 
@@ -31,10 +31,20 @@ If high-level library evaluation remains useful, route it through the same
 player-building path as the CLI rather than maintaining a second composition
 model.
 
+## Implemented
+
+- `match_evaluation.py` now keeps only `MatchEvaluation` and
+  `summarize_match_results()`.
+- Checkpoint, USI-engine, and deterministic player composition remains in the
+  active CLI path through `player_cli.py`.
+- README examples now use the current evaluation script instead of the removed
+  helper API.
+
 ## Acceptance Criteria
 
-- There is a single active path for composing checkpoint, USI-engine, and
-  deterministic players.
-- Match summary logic remains reusable and tested.
-- Obsolete evaluation helpers are removed or rewritten to delegate to the
-  active player-composition path.
+This issue is closed because:
+
+- there is a single active path for composing checkpoint, USI-engine, and
+  deterministic players,
+- match summary logic remains reusable and tested, and
+- obsolete high-level evaluation helpers have been removed.
