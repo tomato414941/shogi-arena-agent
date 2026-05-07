@@ -1,6 +1,6 @@
 # USI Process Stderr Handling
 
-Status: open.
+Status: closed.
 
 ## Issue
 
@@ -26,9 +26,17 @@ debug/log option that drains stderr in a background thread.
 Do not make stderr capture part of the default game record. USI search metadata
 belongs in stdout `info ...` lines, not stderr.
 
+## Implemented
+
+- `UsiProcess` sends engine stderr to `subprocess.DEVNULL` by default.
+- USI stdout remains captured for protocol responses and `info ...` search
+  metadata.
+- Tests cover an engine that writes to stderr before returning `bestmove`.
+
 ## Acceptance Criteria
 
-- Long-running USI calls cannot block because stderr is not drained.
-- Unexpected engine exits still report enough information to debug basic
-  startup failures, or the limitation is explicit.
-- Tests cover an engine that writes to stderr before returning `bestmove`.
+This issue is closed because:
+
+- long-running USI calls cannot block on an undrained stderr pipe, and
+- the default path preserves stdout USI metadata while intentionally discarding
+  stderr diagnostics.

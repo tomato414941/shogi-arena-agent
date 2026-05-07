@@ -53,7 +53,7 @@ class UsiProcess:
             self.command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             bufsize=1,
         )
@@ -125,8 +125,7 @@ class UsiProcess:
         except queue.Empty:
             raise TimeoutError(f"USI process did not respond within {self.read_timeout_seconds} seconds")
         if line == "":
-            stderr = process.stderr.read() if process.stderr is not None else ""
-            raise RuntimeError(f"USI process exited unexpectedly: {stderr.strip()}")
+            raise RuntimeError("USI process exited unexpectedly")
         return line.strip()
 
     def _read_stdout(self) -> None:

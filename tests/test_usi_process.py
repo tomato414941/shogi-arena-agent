@@ -90,6 +90,27 @@ class UsiProcessTest(unittest.TestCase):
             ),
         )
 
+    def test_stderr_output_does_not_block_bestmove(self) -> None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "for line in sys.stdin:\n"
+                "    line = line.strip()\n"
+                "    if line == 'usi': print('usiok', flush=True)\n"
+                "    elif line == 'isready': print('readyok', flush=True)\n"
+                "    elif line.startswith('go'):\n"
+                "        print('diagnostic stderr output', file=sys.stderr, flush=True)\n"
+                "        print('bestmove 7g7f', flush=True)\n"
+                "    elif line == 'quit': break\n"
+            ),
+        ]
+        with UsiProcess(command=command) as process:
+            result = process.go()
+
+        self.assertEqual(result.bestmove, "7g7f")
+
     def test_rejects_non_go_command(self) -> None:
         with self.assertRaises(ValueError):
             UsiProcess(go_command="position startpos")
