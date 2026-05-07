@@ -59,7 +59,7 @@ class MctsPolicy:
             self._run_simulation(root, copy.deepcopy(board))
 
         self.last_policy_targets = _visit_count_policy_targets(root)
-        return max(root.children.items(), key=lambda item: (item[1].visit_count, item[1].value_mean, item[0]))[0]
+        return max(root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0]
 
     def _run_simulation(self, root: _Node, board: shogi.Board) -> None:
         node = root

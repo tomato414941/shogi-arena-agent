@@ -22,6 +22,17 @@ class CaptureValueEvaluator:
         return {move: 1.0 for move in legal_moves}, _captured_piece_value(board)
 
 
+class FinalSelectionValueEvaluator:
+    def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
+        if board.move_number == 1:
+            return {"7g7f": 1.0, "2g2f": 1.0}, 0.0
+        if board.move_stack[-1].usi() == "7g7f":
+            return {move: 1.0 for move in legal_moves}, -0.5
+        if board.move_stack[-1].usi() == "2g2f":
+            return {move: 1.0 for move in legal_moves}, 0.5
+        return {move: 1.0 for move in legal_moves}, 0.0
+
+
 class MctsPolicyTest(unittest.TestCase):
     def test_returns_legal_move(self) -> None:
         move = MctsPolicy(config=MctsConfig(simulation_count=4)).select_move(UsiPosition())
@@ -60,6 +71,14 @@ class MctsPolicyTest(unittest.TestCase):
         ).select_move(position)
 
         self.assertEqual(move, "8h2b+")
+
+    def test_final_selection_uses_root_player_value(self) -> None:
+        move = MctsPolicy(
+            FinalSelectionValueEvaluator(),
+            config=MctsConfig(simulation_count=2, c_puct=1.5),
+        ).select_move(UsiPosition())
+
+        self.assertEqual(move, "7g7f")
 
     def test_can_play_shogi_game(self) -> None:
         player = UsiEngine(
