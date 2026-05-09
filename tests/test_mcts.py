@@ -62,6 +62,19 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertAlmostEqual(sum(policy.last_policy_targets.values()), 1.0)
         self.assertIn("7g7f", policy.last_policy_targets)
 
+    def test_records_move_performance(self) -> None:
+        policy = MctsPolicy(config=MctsConfig(simulation_count=4))
+
+        policy.select_move(UsiPosition())
+
+        self.assertIsNotNone(policy.last_performance)
+        assert policy.last_performance is not None
+        self.assertEqual(policy.last_performance.output_count, 4)
+        self.assertGreater(policy.last_performance.request_wall_time_sec, 0.0)
+        self.assertGreater(policy.last_performance.model_call_count, 0)
+        self.assertGreaterEqual(policy.last_performance.model_wall_time_sec, 0.0)
+        self.assertGreaterEqual(policy.last_performance.non_model_wall_time_sec, 0.0)
+
     def test_value_guides_search_after_expansion(self) -> None:
         position = UsiPosition(command="position startpos moves 7g7f 3c3d")
 

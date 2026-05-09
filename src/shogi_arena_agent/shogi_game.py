@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -101,7 +101,7 @@ class InProcessShogiPlayer:
 
     def go(self) -> UsiGoResult:
         move = self.engine.policy.select_move(self.engine.position)
-        return UsiGoResult(bestmove=move)
+        return UsiGoResult(bestmove=move, info_lines=_policy_info_lines(self.engine.policy))
 
 
 def position_command(moves: tuple[str, ...]) -> str:
@@ -201,6 +201,13 @@ def _as_player(player: ShogiPlayer | UsiEngine) -> ShogiPlayer:
     if isinstance(player, UsiEngine):
         return InProcessShogiPlayer(player)
     return player
+
+
+def _policy_info_lines(policy: object) -> tuple[str, ...]:
+    performance = getattr(policy, "last_performance", None)
+    if performance is None or not is_dataclass(performance):
+        return ()
+    return ("info string intrep_performance " + json.dumps(asdict(performance), sort_keys=True),)
 
 
 def _default_actor_spec(player: ShogiPlayer | UsiEngine, *, side: str) -> ShogiActorSpec:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import copy
+from time import perf_counter
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -27,6 +28,16 @@ class MctsConfig:
             raise ValueError("c_puct must be positive")
 
 
+@dataclass(frozen=True)
+class MctsMovePerformance:
+    request_wall_time_sec: float
+    model_call_count: int
+    model_wall_time_sec: float
+    non_model_wall_time_sec: float
+    output_count: int
+    output_per_sec: float
+
+
 class UniformPolicyValueEvaluator:
     def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
         if not legal_moves:
@@ -45,12 +56,19 @@ class MctsPolicy:
         self.evaluator = evaluator or UniformPolicyValueEvaluator()
         self.config = config or MctsConfig()
         self.last_policy_targets: dict[str, float] | None = None
+        self.last_performance: MctsMovePerformance | None = None
+        self._model_call_count = 0
+        self._model_wall_time_sec = 0.0
 
     def select_move(self, position: UsiPosition) -> str:
+        started_at = perf_counter()
+        self._model_call_count = 0
+        self._model_wall_time_sec = 0.0
         board = board_from_position(position)
         legal_moves = _legal_move_usis(board)
         if not legal_moves:
             self.last_policy_targets = None
+            self.last_performance = self._performance_since(started_at, output_count=0)
             return RESIGN_MOVE
 
         root = _Node(prior=1.0)
@@ -59,6 +77,7 @@ class MctsPolicy:
             self._run_simulation(root, copy.deepcopy(board))
 
         self.last_policy_targets = _visit_count_policy_targets(root)
+        self.last_performance = self._performance_since(started_at, output_count=self.config.simulation_count)
         return max(root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0]
 
     def _run_simulation(self, root: _Node, board: shogi.Board) -> None:
@@ -84,7 +103,10 @@ class MctsPolicy:
         if not legal_moves:
             return -1.0
 
+        started_at = perf_counter()
         priors, value = self.evaluator.evaluate(board, legal_moves)
+        self._model_call_count += 1
+        self._model_wall_time_sec += perf_counter() - started_at
         normalized_priors = _normalize_priors(legal_moves, priors)
         node.children = {move: _Node(prior=normalized_priors[move]) for move in legal_moves}
         return max(-1.0, min(1.0, float(value)))
@@ -98,6 +120,19 @@ class MctsPolicy:
             return -child.value_mean + exploration, move
 
         return max(node.children.items(), key=score)
+
+    def _performance_since(self, started_at: float, *, output_count: int) -> MctsMovePerformance:
+        request_wall_time_sec = perf_counter() - started_at
+        non_model_wall_time_sec = max(0.0, request_wall_time_sec - self._model_wall_time_sec)
+        output_per_sec = output_count / request_wall_time_sec if request_wall_time_sec > 0 else 0.0
+        return MctsMovePerformance(
+            request_wall_time_sec=request_wall_time_sec,
+            model_call_count=self._model_call_count,
+            model_wall_time_sec=self._model_wall_time_sec,
+            non_model_wall_time_sec=non_model_wall_time_sec,
+            output_count=output_count,
+            output_per_sec=output_per_sec,
+        )
 
 
 @dataclass

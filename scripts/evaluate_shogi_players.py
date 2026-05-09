@@ -5,6 +5,7 @@ import json
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict
 from pathlib import Path
+from statistics import mean
 from typing import Any
 
 from shogi_arena_agent.match_evaluation import summarize_match_results
@@ -80,8 +81,56 @@ def _player_context(
 
 def _evaluation_summary(evaluation: Any) -> dict[str, Any]:
     data = asdict(evaluation)
+    performance = _performance_summary(evaluation.results)
+    if performance is not None:
+        data["inference_performance"] = performance
     data.pop("results")
     return data
+
+
+def _performance_summary(results: list[ShogiGameRecord]) -> dict[str, Any] | None:
+    samples = [
+        sample
+        for result in results
+        for transition in result.transitions
+        for sample in _transition_performance_samples(transition.decision_usi_info_lines)
+    ]
+    if not samples:
+        return None
+    request_times = [sample["request_wall_time_sec"] for sample in samples]
+    model_times = [sample["model_wall_time_sec"] for sample in samples]
+    non_model_times = [sample["non_model_wall_time_sec"] for sample in samples]
+    output_counts = [sample["output_count"] for sample in samples]
+    output_rates = [sample["output_per_sec"] for sample in samples]
+    model_call_counts = [sample["model_call_count"] for sample in samples]
+    return {
+        "request_count": len(samples),
+        "request_wall_time_sec_avg": mean(request_times),
+        "request_wall_time_sec_p95": _percentile(request_times, 0.95),
+        "request_wall_time_sec_max": max(request_times),
+        "model_call_count_avg": mean(model_call_counts),
+        "model_wall_time_sec_avg": mean(model_times),
+        "non_model_wall_time_sec_avg": mean(non_model_times),
+        "output_count_avg": mean(output_counts),
+        "output_per_sec_avg": mean(output_rates),
+    }
+
+
+def _transition_performance_samples(info_lines: tuple[str, ...]) -> list[dict[str, float]]:
+    prefix = "info string intrep_performance "
+    samples: list[dict[str, float]] = []
+    for line in info_lines:
+        if line.startswith(prefix):
+            samples.append({key: float(value) for key, value in json.loads(line[len(prefix) :]).items()})
+    return samples
+
+
+def _percentile(values: list[float], fraction: float) -> float:
+    if not values:
+        raise ValueError("values must not be empty")
+    sorted_values = sorted(values)
+    index = min(len(sorted_values) - 1, max(0, int(round(fraction * (len(sorted_values) - 1)))))
+    return sorted_values[index]
 
 
 if __name__ == "__main__":

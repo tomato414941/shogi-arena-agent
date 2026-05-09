@@ -10,7 +10,12 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
-from shogi_arena_agent.shogi_game import load_shogi_game_records_jsonl
+from shogi_arena_agent.shogi_game import (
+    ShogiActorSpec,
+    ShogiGameRecord,
+    ShogiTransitionRecord,
+    load_shogi_game_records_jsonl,
+)
 from shogi_arena_agent.usi import UsiEngine
 
 
@@ -49,6 +54,40 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
         self.assertEqual(summary["game_count"], 2)
         self.assertEqual(summary["black_game_count"], 1)
         self.assertEqual(summary["white_game_count"], 1)
+
+    def test_summarizes_in_process_mcts_performance(self) -> None:
+        module = _load_script_module()
+        record = ShogiGameRecord(
+            black_actor=ShogiActorSpec(kind="test", name="black", settings={}),
+            white_actor=ShogiActorSpec(kind="test", name="white", settings={}),
+            initial_position_sfen="start",
+            transitions=(
+                ShogiTransitionRecord(
+                    ply=0,
+                    side="black",
+                    position_sfen="before",
+                    legal_moves=("7g7f",),
+                    action_usi="7g7f",
+                    next_position_sfen="after",
+                    reward=0.0,
+                    done=False,
+                    decision_usi_info_lines=(
+                        'info string intrep_performance {"model_call_count": 2, "model_wall_time_sec": 0.1, '
+                        '"non_model_wall_time_sec": 0.2, "output_count": 4, "output_per_sec": 10.0, '
+                        '"request_wall_time_sec": 0.4}',
+                    ),
+                ),
+            ),
+            end_reason="max_plies",
+        )
+
+        performance = module._performance_summary([record])
+
+        self.assertIsNotNone(performance)
+        assert performance is not None
+        self.assertEqual(performance["request_count"], 1)
+        self.assertEqual(performance["request_wall_time_sec_avg"], 0.4)
+        self.assertEqual(performance["model_call_count_avg"], 2.0)
 
     def test_external_players_are_reused_across_games(self) -> None:
         module = _load_script_module()
