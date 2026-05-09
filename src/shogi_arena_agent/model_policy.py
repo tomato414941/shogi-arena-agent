@@ -9,6 +9,8 @@ from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 
 
 MoveRanker = Callable[[str, tuple[str, ...]], Sequence[float]]
+PositionEvaluation = tuple[dict[str, float], float]
+PositionEvaluationRequest = tuple[str, tuple[str, ...]]
 
 
 class RankedMovePolicy:
@@ -74,7 +76,7 @@ class ShogiMoveChoiceCheckpointEvaluator:
         model = load_shogi_policy_value_checkpoint(checkpoint_path, device=device)
         torch_device = torch.device(device)
 
-        def evaluate(position_sfen: str, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
+        def evaluate(position_sfen: str, legal_moves: tuple[str, ...]) -> PositionEvaluation:
             position_token_ids = shogi_position_token_ids_from_sfen(position_sfen).unsqueeze(0).to(torch_device)
             candidate_move_features = shogi_candidate_move_features(
                 legal_moves,
@@ -82,16 +84,68 @@ class ShogiMoveChoiceCheckpointEvaluator:
             ).unsqueeze(0).to(torch_device)
             candidate_mask = torch.ones((1, len(legal_moves)), dtype=torch.bool, device=torch_device)
             with torch.no_grad():
-                logits = model(position_token_ids, candidate_move_features, candidate_mask).squeeze(0)
-                value = model.predict_value(position_token_ids).squeeze(0) if hasattr(model, "predict_value") else None
-                probabilities = torch.softmax(logits, dim=0).detach().cpu().tolist()
+                if hasattr(model, "forward_policy_value"):
+                    logits, value = model.forward_policy_value(position_token_ids, candidate_move_features, candidate_mask)
+                    logits = logits.squeeze(0)
+                    value = value.squeeze(0)
+                else:
+                    logits = model(position_token_ids, candidate_move_features, candidate_mask).squeeze(0)
+                    value = model.predict_value(position_token_ids).squeeze(0) if hasattr(model, "predict_value") else None
+                probabilities = torch.softmax(logits[: len(legal_moves)], dim=0).detach().cpu().tolist()
             prior = {move: float(probabilities[index]) for index, move in enumerate(legal_moves)}
             return prior, 0.0 if value is None else float(value.detach().cpu().item())
 
-        return cls(evaluate)
+        def evaluate_many(requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+            if not requests:
+                return []
+            max_choice_count = max(len(legal_moves) for _position_sfen, legal_moves in requests)
+            position_token_ids = torch.stack(
+                [shogi_position_token_ids_from_sfen(position_sfen) for position_sfen, _legal_moves in requests]
+            ).to(torch_device)
+            candidate_move_features = torch.stack(
+                [
+                    shogi_candidate_move_features(
+                        legal_moves,
+                        max_choice_count=max_choice_count,
+                    )
+                    for _position_sfen, legal_moves in requests
+                ]
+            ).to(torch_device)
+            candidate_mask = torch.zeros((len(requests), max_choice_count), dtype=torch.bool, device=torch_device)
+            for index, (_position_sfen, legal_moves) in enumerate(requests):
+                candidate_mask[index, : len(legal_moves)] = True
 
-    def __init__(self, evaluate_position: Callable[[str, tuple[str, ...]], tuple[dict[str, float], float]]) -> None:
+            with torch.no_grad():
+                if hasattr(model, "forward_policy_value"):
+                    logits, values = model.forward_policy_value(position_token_ids, candidate_move_features, candidate_mask)
+                else:
+                    logits = model(position_token_ids, candidate_move_features, candidate_mask)
+                    values = model.predict_value(position_token_ids) if hasattr(model, "predict_value") else None
+
+            evaluations: list[PositionEvaluation] = []
+            for index, (_position_sfen, legal_moves) in enumerate(requests):
+                move_logits = logits[index, : len(legal_moves)]
+                probabilities = torch.softmax(move_logits, dim=0).detach().cpu().tolist()
+                prior = {move: float(probabilities[move_index]) for move_index, move in enumerate(legal_moves)}
+                value = 0.0 if values is None else float(values[index].detach().cpu().item())
+                evaluations.append((prior, value))
+            return evaluations
+
+        return cls(evaluate, evaluate_many)
+
+    def __init__(
+        self,
+        evaluate_position: Callable[[str, tuple[str, ...]], PositionEvaluation],
+        evaluate_positions: Callable[[Sequence[PositionEvaluationRequest]], list[PositionEvaluation]] | None = None,
+    ) -> None:
         self.evaluate_position = evaluate_position
+        self.evaluate_positions = evaluate_positions
 
     def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
         return self.evaluate_position(board.sfen(), legal_moves)
+
+    def evaluate_many(self, requests: Sequence[tuple[shogi.Board, tuple[str, ...]]]) -> list[PositionEvaluation]:
+        position_requests = [(board.sfen(), legal_moves) for board, legal_moves in requests]
+        if self.evaluate_positions is not None:
+            return self.evaluate_positions(position_requests)
+        return [self.evaluate_position(position_sfen, legal_moves) for position_sfen, legal_moves in position_requests]
