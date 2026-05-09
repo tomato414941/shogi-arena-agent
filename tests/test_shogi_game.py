@@ -71,11 +71,11 @@ class ShogiGameTest(unittest.TestCase):
         self.assertEqual(result.white_actor.kind, "yaneuraou")
         self.assertEqual(result.white_actor.settings["go_command"], "go nodes 10")
 
-    def test_records_raw_usi_info_lines(self) -> None:
+    def test_records_raw_decision_usi_info_lines(self) -> None:
         result = play_shogi_game(black=InfoLinePlayer(), white=UsiEngine(), max_plies=1)
 
         self.assertEqual(
-            result.transitions[0].usi_info_lines,
+            result.transitions[0].decision_usi_info_lines,
             ("info multipv 1 score cp 100 pv 7g7f",),
         )
 

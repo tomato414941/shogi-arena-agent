@@ -29,7 +29,7 @@ class ShogiTransitionRecord:
     next_position_sfen: str
     reward: float
     done: bool
-    usi_info_lines: tuple[str, ...] = ()
+    decision_usi_info_lines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -175,7 +175,7 @@ def play_shogi_game(
                 next_position_sfen=board.sfen(),
                 reward=_transition_reward(side=side, winner=winner, done=done),
                 done=done,
-                usi_info_lines=go_result.info_lines,
+                decision_usi_info_lines=go_result.info_lines,
             )
         )
         if done:
@@ -227,7 +227,7 @@ def _transition_record_to_json(record: ShogiTransitionRecord) -> dict[str, objec
         "next_position_sfen": record.next_position_sfen,
         "reward": record.reward,
         "done": record.done,
-        "usi_info_lines": list(record.usi_info_lines),
+        "decision_usi_info_lines": list(record.decision_usi_info_lines),
     }
 
 
@@ -241,7 +241,7 @@ def _transition_record_from_json(data: dict[str, object]) -> ShogiTransitionReco
         next_position_sfen=str(data["next_position_sfen"]),
         reward=float(data["reward"]),
         done=bool(data["done"]),
-        usi_info_lines=tuple(str(line) for line in cast(list[object], data.get("usi_info_lines", []))),
+        decision_usi_info_lines=tuple(str(line) for line in cast(list[object], data.get("decision_usi_info_lines", []))),
     )
 
 
@@ -263,7 +263,7 @@ def _finalize_transitions(
         next_position_sfen=last.next_position_sfen,
         reward=_transition_reward(side=last.side, winner=winner, done=True),
         done=True,
-        usi_info_lines=last.usi_info_lines,
+        decision_usi_info_lines=last.decision_usi_info_lines,
     )
     return finalized
 
