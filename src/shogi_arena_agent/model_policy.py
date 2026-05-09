@@ -33,7 +33,7 @@ class ShogiMoveChoiceCheckpointPolicy(RankedMovePolicy):
     def from_checkpoint(cls, checkpoint_path: str | Path, *, device: str = "cpu") -> ShogiMoveChoiceCheckpointPolicy:
         try:
             import torch
-            from intrep.tasks.shogi_move_choice.checkpoint import load_shogi_move_choice_checkpoint
+            from intrep.problems.shogi_policy_value.checkpoint import load_shogi_policy_value_checkpoint
             from intrep.worlds.shogi.move_encoding import shogi_candidate_move_features
             from intrep.worlds.shogi.position_encoding import shogi_position_token_ids_from_sfen
         except ImportError as error:
@@ -41,7 +41,7 @@ class ShogiMoveChoiceCheckpointPolicy(RankedMovePolicy):
                 "intelligence-representation and torch are required to use shogi move choice checkpoints"
             ) from error
 
-        model = load_shogi_move_choice_checkpoint(checkpoint_path, device=device)
+        model = load_shogi_policy_value_checkpoint(checkpoint_path, device=device)
         torch_device = torch.device(device)
 
         def rank_moves(position_sfen: str, legal_moves: tuple[str, ...]) -> Sequence[float]:
@@ -63,7 +63,7 @@ class ShogiMoveChoiceCheckpointEvaluator:
     def from_checkpoint(cls, checkpoint_path: str | Path, *, device: str = "cpu") -> ShogiMoveChoiceCheckpointEvaluator:
         try:
             import torch
-            from intrep.tasks.shogi_move_choice.checkpoint import load_shogi_move_choice_checkpoint
+            from intrep.problems.shogi_policy_value.checkpoint import load_shogi_policy_value_checkpoint
             from intrep.worlds.shogi.move_encoding import shogi_candidate_move_features
             from intrep.worlds.shogi.position_encoding import shogi_position_token_ids_from_sfen
         except ImportError as error:
@@ -71,7 +71,7 @@ class ShogiMoveChoiceCheckpointEvaluator:
                 "intelligence-representation and torch are required to use shogi move choice checkpoints"
             ) from error
 
-        model = load_shogi_move_choice_checkpoint(checkpoint_path, device=device)
+        model = load_shogi_policy_value_checkpoint(checkpoint_path, device=device)
         torch_device = torch.device(device)
 
         def evaluate(position_sfen: str, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
