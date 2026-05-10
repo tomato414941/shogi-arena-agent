@@ -1,12 +1,15 @@
 # shogi-arena-agent
 
-Runtime integration project for putting a shogi model into external arenas.
+Runtime project for turning shogi models and USI engines into arena-ready
+shogi actors.
 
 This repository is intentionally separate from `intelligence-representation`.
 The model research repository should stay focused on training, checkpoints, and
 portable inference boundaries. This repository owns shogi-specific runtime
 concerns such as USI, local engine matches, Lishogi Bot integration, and future
-arena deployment.
+arena deployment. It may use exported checkpoints from
+`intelligence-representation`, but model training and benchmark records stay in
+the model repository.
 
 ## Scope
 
@@ -17,11 +20,15 @@ In scope:
 - Lishogi Bot bridge
 - optional Floodgate or tournament integration
 - loading exported model checkpoints from `intelligence-representation`
+- runtime search strategies for checkpoint-backed actors
+- actor specs and game records for local evaluation
 
 Out of scope:
 
 - model architecture research
 - training recipes
+- model-specific benchmark records
+- RunPod training operations
 - general multimodal representation design
 - changes that make `intelligence-representation` depend on this repository
 
