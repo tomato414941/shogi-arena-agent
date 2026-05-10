@@ -56,6 +56,13 @@ python3 "$RUNPOD_JOB" \
   --gpu-type "$GPU_TYPE" \
   --container-disk-size 30 \
   --volume-size 20 \
+  --remote-dir /root/intrep \
+  --sync src \
+  --sync tests \
+  --sync pyproject.toml \
+  --sync uv.lock \
+  --sync README.md \
+  --sync AGENTS.md \
   --sync scripts/setup_runpod.sh \
   --sync "$CHECKPOINT_REL" \
   --setup-command 'cd "$REMOTE_DIR"; bash scripts/setup_runpod.sh' \
