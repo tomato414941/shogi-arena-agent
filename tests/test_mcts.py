@@ -55,6 +55,18 @@ class FinalSelectionValueEvaluator:
         return evaluations
 
 
+class BatchCountingEvaluator:
+    def __init__(self) -> None:
+        self.batch_sizes: list[int] = []
+
+    def evaluate_batch(
+        self,
+        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+    ) -> list[tuple[dict[str, float], float]]:
+        self.batch_sizes.append(len(requests))
+        return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
+
+
 class MctsPolicyTest(unittest.TestCase):
     def test_returns_legal_move(self) -> None:
         move = MctsPolicy(config=MctsConfig(simulation_count=4)).select_move(UsiPosition())
@@ -96,6 +108,18 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertGreater(policy.last_performance.model_call_count, 0)
         self.assertGreaterEqual(policy.last_performance.model_wall_time_sec, 0.0)
         self.assertGreaterEqual(policy.last_performance.non_model_wall_time_sec, 0.0)
+
+    def test_batches_leaf_evaluations(self) -> None:
+        evaluator = BatchCountingEvaluator()
+        policy = MctsPolicy(evaluator, config=MctsConfig(simulation_count=8, evaluation_batch_size=4))
+
+        policy.select_move(UsiPosition())
+
+        self.assertIsNotNone(policy.last_performance)
+        assert policy.last_performance is not None
+        self.assertEqual(policy.last_performance.output_count, 8)
+        self.assertLess(policy.last_performance.model_call_count, 9)
+        self.assertIn(4, evaluator.batch_sizes)
 
     def test_value_guides_search_after_expansion(self) -> None:
         position = UsiPosition(command="position startpos moves 7g7f 3c3d")

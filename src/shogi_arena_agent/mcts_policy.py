@@ -87,26 +87,66 @@ class MctsPolicy:
 
         root = _Node(prior=1.0)
         self._expand(root, board)
-        for _ in range(self.config.simulation_count):
-            self._run_simulation(root, copy.deepcopy(board))
+        completed_simulations = 0
+        while completed_simulations < self.config.simulation_count:
+            completed_simulations += self._run_simulation_batch(
+                root,
+                board,
+                max_count=min(self.config.evaluation_batch_size, self.config.simulation_count - completed_simulations),
+            )
 
         self.last_policy_targets = _visit_count_policy_targets(root)
         self.last_performance = self._performance_since(started_at, output_count=self.config.simulation_count)
         return max(root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0]
 
-    def _run_simulation(self, root: _Node, board: shogi.Board) -> None:
+    def _run_simulation_batch(self, root: _Node, board: shogi.Board, *, max_count: int) -> int:
+        pending: list[_PendingSimulation] = []
+        completed = 0
+        for _ in range(max_count):
+            simulation = self._select_simulation(root, copy.deepcopy(board))
+            if simulation is None:
+                break
+            if simulation.board.is_game_over():
+                self._backpropagate(simulation.path, -1.0)
+                completed += 1
+                continue
+            legal_moves = _legal_move_usis(simulation.board)
+            if not legal_moves:
+                self._backpropagate(simulation.path, -1.0)
+                completed += 1
+                continue
+            simulation.node.pending = True
+            pending.append(_PendingSimulation(path=simulation.path, board=simulation.board, legal_moves=legal_moves))
+
+        if pending:
+            started_at = perf_counter()
+            evaluations = self.evaluator.evaluate_batch(
+                tuple((simulation.board, simulation.legal_moves) for simulation in pending)
+            )
+            self._model_call_count += 1
+            self._model_wall_time_sec += perf_counter() - started_at
+            if len(evaluations) != len(pending):
+                raise ValueError("batch evaluator must return one evaluation per request")
+            for simulation, (priors, value) in zip(pending, evaluations, strict=True):
+                simulation.path[-1].pending = False
+                self._expand_with_evaluation(simulation.path[-1], simulation.legal_moves, priors)
+                self._backpropagate(simulation.path, max(-1.0, min(1.0, float(value))))
+            completed += len(pending)
+        return completed
+
+    def _select_simulation(self, root: _Node, board: shogi.Board) -> _SelectedSimulation | None:
         node = root
         path = [node]
         while node.children:
-            move, node = self._select_child(node)
+            selected = self._select_child(node)
+            if selected is None:
+                return None
+            move, node = selected
             board.push_usi(move)
             path.append(node)
+        return _SelectedSimulation(path=path, board=board, node=node)
 
-        if board.is_game_over():
-            value = -1.0
-        else:
-            value = self._expand(node, board)
-
+    def _backpropagate(self, path: list[_Node], value: float) -> None:
         for visited_node in reversed(path):
             visited_node.visit_count += 1
             visited_node.value_sum += value
@@ -121,11 +161,14 @@ class MctsPolicy:
         priors, value = self.evaluator.evaluate_batch(((board, legal_moves),))[0]
         self._model_call_count += 1
         self._model_wall_time_sec += perf_counter() - started_at
-        normalized_priors = _normalize_priors(legal_moves, priors)
-        node.children = {move: _Node(prior=normalized_priors[move]) for move in legal_moves}
+        self._expand_with_evaluation(node, legal_moves, priors)
         return max(-1.0, min(1.0, float(value)))
 
-    def _select_child(self, node: _Node) -> tuple[str, _Node]:
+    def _expand_with_evaluation(self, node: _Node, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:
+        normalized_priors = _normalize_priors(legal_moves, priors)
+        node.children = {move: _Node(prior=normalized_priors[move]) for move in legal_moves}
+
+    def _select_child(self, node: _Node) -> tuple[str, _Node] | None:
         parent_visits = max(1, node.visit_count)
 
         def score(item: tuple[str, _Node]) -> tuple[float, str]:
@@ -133,7 +176,10 @@ class MctsPolicy:
             exploration = self.config.c_puct * child.prior * math.sqrt(parent_visits) / (1 + child.visit_count)
             return -child.value_mean + exploration, move
 
-        return max(node.children.items(), key=score)
+        candidates = [item for item in node.children.items() if not item[1].pending]
+        if not candidates:
+            return None
+        return max(candidates, key=score)
 
     def _performance_since(self, started_at: float, *, output_count: int) -> MctsMovePerformance:
         request_wall_time_sec = perf_counter() - started_at
@@ -154,6 +200,7 @@ class _Node:
     prior: float
     visit_count: int = 0
     value_sum: float = 0.0
+    pending: bool = False
     children: dict[str, "_Node"] = field(default_factory=dict)
 
     @property
@@ -161,6 +208,20 @@ class _Node:
         if self.visit_count == 0:
             return 0.0
         return self.value_sum / self.visit_count
+
+
+@dataclass
+class _SelectedSimulation:
+    path: list[_Node]
+    board: shogi.Board
+    node: _Node
+
+
+@dataclass
+class _PendingSimulation:
+    path: list[_Node]
+    board: shogi.Board
+    legal_moves: tuple[str, ...]
 
 
 def _legal_move_usis(board: shogi.Board) -> tuple[str, ...]:
