@@ -104,4 +104,5 @@ print('device', torch.cuda.get_device_name(0))
 PY
 " \
   --output "$OUTPUT_DIR" \
+  --timings-output "$OUTPUT_DIR/runpod_timings.json" \
   "$@"
