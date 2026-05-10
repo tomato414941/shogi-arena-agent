@@ -1,24 +1,24 @@
 # RunPod Runner Dependency Boundary
 
-Status: open. Priority: medium.
+Status: closed.
 
 ## Issue
 
-`scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh` provides the repository
-entrypoint for RunPod arena evaluation, but it currently delegates pod
-lifecycle management to:
+`scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh` originally provided the
+repository entrypoint for RunPod arena evaluation, but delegated pod lifecycle
+management to:
 
 ```text
 ../intelligence-representation/scripts/runpod/run_job.py
 ```
 
-This keeps the RunPod API, SSH, rsync, and pod deletion implementation in one
-place, but it makes this repository's RunPod arena evaluation depend on a
-sibling repository tool.
+That kept the RunPod API, SSH, rsync, and pod deletion implementation in one
+place, but made this repository's RunPod arena evaluation depend on a sibling
+model-research repository tool.
 
 ## Current Position
 
-This is acceptable as a short-term operating shortcut.
+This was acceptable as a short-term operating shortcut.
 
 It does not reverse the model/runtime code dependency direction:
 
@@ -26,13 +26,27 @@ It does not reverse the model/runtime code dependency direction:
 shogi-arena-agent -> intelligence-representation
 ```
 
-However, it is weaker as an operations boundary because `shogi-arena-agent`
-cannot run its RunPod arena evaluation entrypoint standalone unless
-`intelligence-representation` is checked out beside it.
+However, it was weaker as an operations boundary because `shogi-arena-agent`
+could not run its RunPod arena evaluation entrypoint unless
+`intelligence-representation` was checked out beside it.
 
-## Risks
+## Implemented
 
-- sibling checkout layout becomes part of the implicit contract,
+Generic RunPod pod lifecycle code now lives in:
+
+```text
+../runpod-job-runner/scripts/run_job.py
+```
+
+`scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh` uses that shared runner by
+default through `RUNPOD_RUNNER_ROOT` / `RUNPOD_JOB`. The arena evaluation
+wrapper stays in this repository, and the model checkpoint input still comes
+from `intelligence-representation`.
+
+## Original Risks
+
+- sibling `intelligence-representation` checkout layout becomes part of the
+  implicit contract,
 - changes to the `intelligence-representation` RunPod runner can break arena
   evaluation,
 - RunPod job execution responsibility remains partly owned by the model
@@ -58,10 +72,9 @@ clear need, because duplicated pod lifecycle code is likely to drift.
 
 ## Acceptance Criteria
 
-This issue can close when one of the following is true:
+This issue is closed because:
 
 - RunPod job lifecycle code has a clear shared home outside either project,
-- `shogi-arena-agent` owns a minimal runner appropriate for arena evaluation,
-  or
-- the sibling `intelligence-representation` runner dependency is intentionally
-  documented as the supported operations contract.
+- `shogi-arena-agent` no longer depends on the
+  `intelligence-representation` runner implementation, and
+- project-specific arena evaluation logic remains in `shogi-arena-agent`.

@@ -208,9 +208,9 @@ MAX_PLIES=80 \
 ./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
 ```
 
-This script uses the `intelligence-representation` RunPod runner for pod
-lifecycle management, then runs the shogi arena evaluation in this repository.
-Results are copied back under `runs/shogi/`.
+This script uses the shared `../runpod-job-runner/scripts/run_job.py` helper
+for pod lifecycle management, then runs the shogi arena evaluation in this
+repository. Results are copied back under `runs/shogi/`.
 
 ## Game Log Smoke
 

@@ -5,7 +5,8 @@ cd "$(dirname "$0")/.."
 
 ARENA_ROOT=$(pwd)
 INTREP_ROOT=${INTREP_ROOT:-"$ARENA_ROOT/../intelligence-representation"}
-RUNPOD_JOB=${RUNPOD_JOB:-"$INTREP_ROOT/scripts/runpod/run_job.py"}
+RUNPOD_RUNNER_ROOT=${RUNPOD_RUNNER_ROOT:-"$ARENA_ROOT/../runpod-job-runner"}
+RUNPOD_JOB=${RUNPOD_JOB:-"$RUNPOD_RUNNER_ROOT/scripts/run_job.py"}
 
 CHECKPOINT=${CHECKPOINT:?set CHECKPOINT to an intelligence-representation checkpoint path}
 OUTPUT_DIR=${OUTPUT_DIR:-runs/shogi/runpod-checkpoint-vs-yaneuraou}
