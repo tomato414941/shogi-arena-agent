@@ -54,9 +54,11 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].white_actor.settings["checkpoint"], "white.pt")
         self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 1)
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 1)
+        self.assertIsNone(records[0].black_actor.settings["move_time_limit_sec"])
+        self.assertIsNone(records[0].white_actor.settings["move_time_limit_sec"])
         self.assertEqual(summary["game_count"], 1)
 
-    def test_records_checkpoint_evaluation_batch_size_for_both_sides(self) -> None:
+    def test_records_checkpoint_mcts_settings_for_both_sides(self) -> None:
         module = _load_script_module()
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -74,12 +76,16 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "black.pt",
                         "--black-checkpoint-evaluation-batch-size",
                         "8",
+                        "--black-checkpoint-move-time-limit-sec",
+                        "8.5",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
                         "white.pt",
                         "--white-checkpoint-evaluation-batch-size",
                         "16",
+                        "--white-checkpoint-move-time-limit-sec",
+                        "9.0",
                         "--games",
                         "1",
                         "--max-plies",
@@ -93,6 +99,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
         self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 8)
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 16)
+        self.assertEqual(records[0].black_actor.settings["move_time_limit_sec"], 8.5)
+        self.assertEqual(records[0].white_actor.settings["move_time_limit_sec"], 9.0)
 
     def test_yaneuraou_requires_command(self) -> None:
         module = _load_script_module()

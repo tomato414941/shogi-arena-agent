@@ -92,7 +92,8 @@ uv run --extra model python -m shogi_arena_agent \
   --device cuda \
   --checkpoint-policy mcts \
   --checkpoint-simulations 4096 \
-  --checkpoint-evaluation-batch-size 64
+  --checkpoint-evaluation-batch-size 64 \
+  --checkpoint-move-time-limit-sec 9.0
 ```
 
 ```python

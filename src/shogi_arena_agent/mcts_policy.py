@@ -25,6 +25,7 @@ class MctsConfig:
     simulation_count: int = 32
     c_puct: float = 1.5
     evaluation_batch_size: int = 1
+    move_time_limit_sec: float | None = None
 
     def __post_init__(self) -> None:
         if self.simulation_count <= 0:
@@ -33,6 +34,8 @@ class MctsConfig:
             raise ValueError("c_puct must be positive")
         if self.evaluation_batch_size <= 0:
             raise ValueError("evaluation_batch_size must be positive")
+        if self.move_time_limit_sec is not None and self.move_time_limit_sec < 0.0:
+            raise ValueError("move_time_limit_sec must be non-negative")
 
 
 @dataclass(frozen=True)
@@ -88,7 +91,12 @@ class MctsPolicy:
         root = _Node(prior=1.0)
         self._expand(root, board)
         completed_simulations = 0
+        deadline = None
+        if self.config.move_time_limit_sec is not None:
+            deadline = started_at + self.config.move_time_limit_sec
         while completed_simulations < self.config.simulation_count:
+            if deadline is not None and perf_counter() >= deadline:
+                break
             completed_simulations += self._run_simulation_batch(
                 root,
                 board,
@@ -96,7 +104,7 @@ class MctsPolicy:
             )
 
         self.last_policy_targets = _visit_count_policy_targets(root)
-        self.last_performance = self._performance_since(started_at, output_count=self.config.simulation_count)
+        self.last_performance = self._performance_since(started_at, output_count=completed_simulations)
         return max(root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0]
 
     def _run_simulation_batch(self, root: _Node, board: shogi.Board, *, max_count: int) -> int:

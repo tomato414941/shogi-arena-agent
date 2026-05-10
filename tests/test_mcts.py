@@ -121,6 +121,15 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertLess(policy.last_performance.model_call_count, 9)
         self.assertIn(4, evaluator.batch_sizes)
 
+    def test_move_time_limit_can_stop_before_simulation_limit(self) -> None:
+        policy = MctsPolicy(config=MctsConfig(simulation_count=8, move_time_limit_sec=0.0))
+
+        policy.select_move(UsiPosition())
+
+        self.assertIsNotNone(policy.last_performance)
+        assert policy.last_performance is not None
+        self.assertEqual(policy.last_performance.output_count, 0)
+
     def test_value_guides_search_after_expansion(self) -> None:
         position = UsiPosition(command="position startpos moves 7g7f 3c3d")
 
@@ -159,6 +168,8 @@ class MctsPolicyTest(unittest.TestCase):
             MctsConfig(c_puct=0.0)
         with self.assertRaises(ValueError):
             MctsConfig(evaluation_batch_size=0)
+        with self.assertRaises(ValueError):
+            MctsConfig(move_time_limit_sec=-1.0)
 
 
 def _captured_piece_value(board: shogi.Board) -> float:

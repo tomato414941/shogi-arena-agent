@@ -12,6 +12,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--checkpoint-policy", choices=("direct", "mcts"), default="direct")
     parser.add_argument("--checkpoint-simulations", type=int, default=16)
     parser.add_argument("--checkpoint-evaluation-batch-size", type=int, default=1)
+    parser.add_argument("--checkpoint-move-time-limit-sec", type=float)
     parser.add_argument("--device", default="cpu", help="Torch device used with --checkpoint.")
     return parser.parse_args(argv)
 
@@ -32,6 +33,7 @@ def build_engine(args: argparse.Namespace) -> UsiEngine:
             config=MctsConfig(
                 simulation_count=args.checkpoint_simulations,
                 evaluation_batch_size=args.checkpoint_evaluation_batch_size,
+                move_time_limit_sec=args.checkpoint_move_time_limit_sec,
             ),
         )
     return UsiEngine(policy=policy)

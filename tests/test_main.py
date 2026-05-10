@@ -15,6 +15,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(args.checkpoint_policy, "direct")
         self.assertEqual(args.checkpoint_simulations, 16)
         self.assertEqual(args.checkpoint_evaluation_batch_size, 1)
+        self.assertIsNone(args.checkpoint_move_time_limit_sec)
         self.assertEqual(args.device, "cpu")
 
     def test_build_engine_defaults_to_usi_engine(self) -> None:
@@ -34,6 +35,8 @@ class MainTest(unittest.TestCase):
                 "32",
                 "--checkpoint-evaluation-batch-size",
                 "8",
+                "--checkpoint-move-time-limit-sec",
+                "9.0",
                 "--device",
                 "cuda",
             ]
@@ -46,6 +49,7 @@ class MainTest(unittest.TestCase):
         self.assertIsInstance(engine.policy, MctsPolicy)
         self.assertEqual(engine.policy.config.simulation_count, 32)
         self.assertEqual(engine.policy.config.evaluation_batch_size, 8)
+        self.assertEqual(engine.policy.config.move_time_limit_sec, 9.0)
         from_checkpoint.assert_called_once_with("checkpoint.pt", device="cuda")
 
 
