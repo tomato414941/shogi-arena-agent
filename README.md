@@ -196,6 +196,22 @@ uv run --extra model python scripts/generate_shogi_games.py \
 
 Local smoke tests can use a material-evaluation YaneuraOu build.
 
+RunPod checkpoint-vs-YaneuraOu evaluation has a repository entrypoint:
+
+```sh
+CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
+MCTS_SIMULATIONS=4096 \
+MCTS_BATCH_SIZE=64 \
+MCTS_MOVE_TIME_LIMIT_SEC=9.0 \
+GAMES=1 \
+MAX_PLIES=80 \
+./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
+```
+
+This script uses the `intelligence-representation` RunPod runner for pod
+lifecycle management, then runs the shogi arena evaluation in this repository.
+Results are copied back under `runs/shogi/`.
+
 ## Game Log Smoke
 
 ```sh
