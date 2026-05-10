@@ -87,7 +87,12 @@ uv run --extra model python -c "import torch, intrep"
 Run the checkpoint as a USI engine:
 
 ```sh
-uv run --extra model python -m shogi_arena_agent --checkpoint /path/to/checkpoint.pt
+uv run --extra model python -m shogi_arena_agent \
+  --checkpoint /path/to/checkpoint.pt \
+  --device cuda \
+  --checkpoint-policy mcts \
+  --checkpoint-simulations 4096 \
+  --checkpoint-evaluation-batch-size 64
 ```
 
 ```python
