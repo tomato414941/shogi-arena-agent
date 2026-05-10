@@ -1,5 +1,7 @@
 import unittest
 
+from collections.abc import Sequence
+
 import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
@@ -11,26 +13,46 @@ class PriorOnlyEvaluator:
     def __init__(self, preferred_move: str) -> None:
         self.preferred_move = preferred_move
 
-    def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
-        return {move: 1.0 if move == self.preferred_move else 0.0 for move in legal_moves}, 0.0
+    def evaluate_batch(
+        self,
+        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+    ) -> list[tuple[dict[str, float], float]]:
+        return [
+            ({move: 1.0 if move == self.preferred_move else 0.0 for move in legal_moves}, 0.0)
+            for _board, legal_moves in requests
+        ]
 
 
 class CaptureValueEvaluator:
-    def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
-        if "8h2b+" in legal_moves:
-            return {move: 1.0 if move == "8h2b+" else 0.1 for move in legal_moves}, 0.0
-        return {move: 1.0 for move in legal_moves}, _captured_piece_value(board)
+    def evaluate_batch(
+        self,
+        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+    ) -> list[tuple[dict[str, float], float]]:
+        evaluations: list[tuple[dict[str, float], float]] = []
+        for board, legal_moves in requests:
+            if "8h2b+" in legal_moves:
+                evaluations.append(({move: 1.0 if move == "8h2b+" else 0.1 for move in legal_moves}, 0.0))
+                continue
+            evaluations.append(({move: 1.0 for move in legal_moves}, _captured_piece_value(board)))
+        return evaluations
 
 
 class FinalSelectionValueEvaluator:
-    def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
-        if board.move_number == 1:
-            return {"7g7f": 1.0, "2g2f": 1.0}, 0.0
-        if board.move_stack[-1].usi() == "7g7f":
-            return {move: 1.0 for move in legal_moves}, -0.5
-        if board.move_stack[-1].usi() == "2g2f":
-            return {move: 1.0 for move in legal_moves}, 0.5
-        return {move: 1.0 for move in legal_moves}, 0.0
+    def evaluate_batch(
+        self,
+        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+    ) -> list[tuple[dict[str, float], float]]:
+        evaluations: list[tuple[dict[str, float], float]] = []
+        for board, legal_moves in requests:
+            if board.move_number == 1:
+                evaluations.append(({"7g7f": 1.0, "2g2f": 1.0}, 0.0))
+            elif board.move_stack[-1].usi() == "7g7f":
+                evaluations.append(({move: 1.0 for move in legal_moves}, -0.5))
+            elif board.move_stack[-1].usi() == "2g2f":
+                evaluations.append(({move: 1.0 for move in legal_moves}, 0.5))
+            else:
+                evaluations.append(({move: 1.0 for move in legal_moves}, 0.0))
+        return evaluations
 
 
 class MctsPolicyTest(unittest.TestCase):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import copy
+from collections.abc import Sequence
 from time import perf_counter
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -12,8 +13,11 @@ from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 
 
 class PolicyValueEvaluator(Protocol):
-    def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
-        """Return move priors and a value from the side-to-move perspective."""
+    def evaluate_batch(
+        self,
+        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+    ) -> list[tuple[dict[str, float], float]]:
+        """Return move priors and values from the side-to-move perspective."""
 
 
 @dataclass(frozen=True)
@@ -39,11 +43,18 @@ class MctsMovePerformance:
 
 
 class UniformPolicyValueEvaluator:
-    def evaluate(self, board: shogi.Board, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
-        if not legal_moves:
-            return {}, -1.0
-        prior = 1.0 / len(legal_moves)
-        return {move: prior for move in legal_moves}, 0.0
+    def evaluate_batch(
+        self,
+        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+    ) -> list[tuple[dict[str, float], float]]:
+        evaluations: list[tuple[dict[str, float], float]] = []
+        for _board, legal_moves in requests:
+            if not legal_moves:
+                evaluations.append(({}, -1.0))
+                continue
+            prior = 1.0 / len(legal_moves)
+            evaluations.append(({move: prior for move in legal_moves}, 0.0))
+        return evaluations
 
 
 class MctsPolicy:
@@ -104,7 +115,7 @@ class MctsPolicy:
             return -1.0
 
         started_at = perf_counter()
-        priors, value = self.evaluator.evaluate(board, legal_moves)
+        priors, value = self.evaluator.evaluate_batch(((board, legal_moves),))[0]
         self._model_call_count += 1
         self._model_wall_time_sec += perf_counter() - started_at
         normalized_priors = _normalize_priors(legal_moves, priors)
