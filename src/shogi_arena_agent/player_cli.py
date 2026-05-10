@@ -31,6 +31,7 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-checkpoint")
     parser.add_argument(f"--{prefix}-checkpoint-policy", choices=("direct", "mcts"), default="mcts")
     parser.add_argument(f"--{prefix}-checkpoint-simulations", type=int, default=16)
+    parser.add_argument(f"--{prefix}-checkpoint-evaluation-batch-size", type=int, default=1)
     parser.add_argument(f"--{prefix}-checkpoint-device", default="cpu")
     parser.add_argument(f"--{prefix}-yaneuraou-command")
     parser.add_argument(f"--{prefix}-yaneuraou-go-command", default="go nodes 1")
@@ -53,8 +54,10 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
         checkpoint = _arg(args, prefix, "checkpoint")
         policy_kind = _arg(args, prefix, "checkpoint_policy")
         simulations = _arg(args, prefix, "checkpoint_simulations")
+        evaluation_batch_size = _arg(args, prefix, "checkpoint_evaluation_batch_size")
         device = _arg(args, prefix, "checkpoint_device")
-        policy = _load_checkpoint_policy(checkpoint, policy_kind=policy_kind, simulations=simulations, device=device)
+        mcts_config = MctsConfig(simulation_count=simulations, evaluation_batch_size=evaluation_batch_size)
+        policy = _load_checkpoint_policy(checkpoint, policy_kind=policy_kind, config=mcts_config, device=device)
         return BuiltPlayer(
             player=UsiEngine(name=name, policy=policy),
             actor=ShogiActorSpec(
@@ -63,7 +66,8 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
                 settings={
                     "checkpoint": checkpoint,
                     "policy": policy_kind,
-                    "simulations": simulations if policy_kind == "mcts" else None,
+                    "simulations": mcts_config.simulation_count if policy_kind == "mcts" else None,
+                    "evaluation_batch_size": mcts_config.evaluation_batch_size if policy_kind == "mcts" else None,
                     "device": device,
                 },
             ),
@@ -112,11 +116,11 @@ def player_context(args: argparse.Namespace, prefix: str, *, name: str) -> Itera
         yield BuiltPlayer(player=player, actor=actor)
 
 
-def _load_checkpoint_policy(checkpoint: str, *, policy_kind: str, simulations: int, device: str) -> Any:
+def _load_checkpoint_policy(checkpoint: str, *, policy_kind: str, config: MctsConfig, device: str) -> Any:
     if policy_kind == "direct":
         return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device)
     evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint, device=device)
-    return MctsPolicy(evaluator=evaluator, config=MctsConfig(simulation_count=simulations))
+    return MctsPolicy(evaluator=evaluator, config=config)
 
 
 def _arg(args: argparse.Namespace, prefix: str, name: str) -> Any:

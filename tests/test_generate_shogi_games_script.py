@@ -52,7 +52,41 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].black_actor.settings["checkpoint"], "black.pt")
         self.assertEqual(records[0].white_actor.settings["checkpoint"], "white.pt")
+        self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 1)
         self.assertEqual(summary["game_count"], 1)
+
+    def test_records_checkpoint_evaluation_batch_size(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with patch(
+                "shogi_arena_agent.player_cli._load_checkpoint_policy",
+                return_value=DeterministicLegalMovePolicy(),
+            ), contextlib.redirect_stdout(io.StringIO()):
+                module.main(
+                    [
+                        "--black-kind",
+                        "checkpoint",
+                        "--black-checkpoint",
+                        "black.pt",
+                        "--black-checkpoint-evaluation-batch-size",
+                        "8",
+                        "--white-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "1",
+                        "--max-plies",
+                        "1",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+
+        self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 8)
 
     def test_yaneuraou_requires_command(self) -> None:
         module = _load_script_module()

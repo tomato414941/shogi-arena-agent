@@ -133,6 +133,8 @@ class MctsPolicyTest(unittest.TestCase):
             MctsConfig(simulation_count=0)
         with self.assertRaises(ValueError):
             MctsConfig(c_puct=0.0)
+        with self.assertRaises(ValueError):
+            MctsConfig(evaluation_batch_size=0)
 
 
 def _captured_piece_value(board: shogi.Board) -> float:

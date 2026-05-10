@@ -24,12 +24,15 @@ class PolicyValueEvaluator(Protocol):
 class MctsConfig:
     simulation_count: int = 32
     c_puct: float = 1.5
+    evaluation_batch_size: int = 1
 
     def __post_init__(self) -> None:
         if self.simulation_count <= 0:
             raise ValueError("simulation_count must be positive")
         if self.c_puct <= 0.0:
             raise ValueError("c_puct must be positive")
+        if self.evaluation_batch_size <= 0:
+            raise ValueError("evaluation_batch_size must be positive")
 
 
 @dataclass(frozen=True)
