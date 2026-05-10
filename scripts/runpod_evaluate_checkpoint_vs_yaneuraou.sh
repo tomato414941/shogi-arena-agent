@@ -103,4 +103,5 @@ print('cuda', torch.cuda.is_available())
 print('device', torch.cuda.get_device_name(0))
 PY
 " \
-  --output "$OUTPUT_DIR"
+  --output "$OUTPUT_DIR" \
+  "$@"
