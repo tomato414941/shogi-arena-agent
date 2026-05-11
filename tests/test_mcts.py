@@ -5,7 +5,13 @@ from collections.abc import Sequence
 import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
-from shogi_arena_agent.mcts_policy import BatchedMctsMoveSelector, MctsConfig, MctsPolicy, PolicyValueEvaluator
+from shogi_arena_agent.mcts_policy import (
+    BatchedMctsMoveSelector,
+    MctsConfig,
+    MctsPolicy,
+    PolicyValueEvaluator,
+    self_play_move_selection_config,
+)
 from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position
 
 
@@ -120,6 +126,16 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertEqual(policy.last_performance.output_count, 8)
         self.assertLess(policy.last_performance.model_call_count, 9)
         self.assertIn(4, evaluator.batch_sizes)
+
+    def test_self_play_selection_can_sample_different_root_moves(self) -> None:
+        selector = BatchedMctsMoveSelector(
+            config=MctsConfig(simulation_count=8, evaluation_batch_size=8),
+            move_selection=self_play_move_selection_config(seed=1),
+        )
+
+        results = selector.select_moves([UsiPosition(), UsiPosition(), UsiPosition(), UsiPosition()])
+
+        self.assertGreater(len({result.move for result in results}), 1)
 
     def test_batched_selector_batches_across_positions(self) -> None:
         evaluator = BatchCountingEvaluator()

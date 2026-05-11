@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Sequence
 from time import perf_counter
 from dataclasses import dataclass, field
@@ -36,6 +37,30 @@ class MctsConfig:
         if self.move_time_limit_sec is not None and self.move_time_limit_sec < 0.0:
             raise ValueError("move_time_limit_sec must be non-negative")
         validate_board_backend(self.board_backend)
+
+
+@dataclass(frozen=True)
+class MoveSelectionConfig:
+    mode: str = "deterministic"
+    temperature: float = 1.0
+    temperature_plies: int = 0
+    seed: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"deterministic", "visit_sample"}:
+            raise ValueError("mode must be deterministic or visit_sample")
+        if self.temperature <= 0.0:
+            raise ValueError("temperature must be positive")
+        if self.temperature_plies < 0:
+            raise ValueError("temperature_plies must be non-negative")
+
+
+def evaluation_move_selection_config() -> MoveSelectionConfig:
+    return MoveSelectionConfig(mode="deterministic")
+
+
+def self_play_move_selection_config(*, seed: int | None = None) -> MoveSelectionConfig:
+    return MoveSelectionConfig(mode="visit_sample", temperature=1.0, temperature_plies=40, seed=seed)
 
 
 @dataclass(frozen=True)
@@ -89,9 +114,12 @@ class MctsPolicy:
         evaluator: PolicyValueEvaluator | None = None,
         *,
         config: MctsConfig | None = None,
+        move_selection: MoveSelectionConfig | None = None,
     ) -> None:
         self.evaluator = evaluator or UniformPolicyValueEvaluator()
         self.config = config or MctsConfig()
+        self.move_selection = move_selection or evaluation_move_selection_config()
+        self._rng = random.Random(self.move_selection.seed)
         self.last_policy_targets: dict[str, float] | None = None
         self.last_performance: MctsMovePerformance | None = None
         self._model_call_count = 0
@@ -125,7 +153,7 @@ class MctsPolicy:
 
         self.last_policy_targets = _visit_count_policy_targets(root)
         self.last_performance = self._performance_since(started_at, output_count=completed_simulations)
-        return max(root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0]
+        return _select_final_move(root, position, self.move_selection, self._rng)
 
     def _run_simulation_batch(self, root: _Node, board: ShogiBoard, *, max_count: int) -> int:
         pending: list[_PendingSimulation] = []
@@ -229,16 +257,25 @@ class BatchedMctsMoveSelector:
         evaluator: PolicyValueEvaluator | None = None,
         *,
         config: MctsConfig | None = None,
+        move_selection: MoveSelectionConfig | None = None,
     ) -> None:
         self.evaluator = evaluator or UniformPolicyValueEvaluator()
         self.config = config or MctsConfig()
+        self.move_selection = move_selection or evaluation_move_selection_config()
+        self._rng = random.Random(self.move_selection.seed)
         self.last_batch_performance: MctsBatchPerformance | None = None
 
     def select_moves(self, positions: Sequence[UsiPosition]) -> list[MctsMoveResult]:
         started_at = perf_counter()
         batch_stats = _BatchSearchStats(position_count=len(positions))
         states = [
-            _BatchedSearchState.from_position(position, self.config.simulation_count, board_backend=self.config.board_backend)
+            _BatchedSearchState.from_position(
+                position,
+                self.config.simulation_count,
+                board_backend=self.config.board_backend,
+                move_selection=self.move_selection,
+                rng=self._rng,
+            )
             for position in positions
         ]
         for state in states:
@@ -396,13 +433,24 @@ class _BatchedSearchState:
     root: _Node
     started_at: float
     remaining_simulations: int
+    ply: int
     completed_simulations: int = 0
     model_call_count: int = 0
     model_wall_time_sec: float = 0.0
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
+    move_selection: MoveSelectionConfig = field(default_factory=evaluation_move_selection_config)
+    rng: random.Random = field(default_factory=random.Random)
 
     @classmethod
-    def from_position(cls, position: UsiPosition, simulation_count: int, *, board_backend: str) -> "_BatchedSearchState":
+    def from_position(
+        cls,
+        position: UsiPosition,
+        simulation_count: int,
+        *,
+        board_backend: str,
+        move_selection: MoveSelectionConfig,
+        rng: random.Random,
+    ) -> "_BatchedSearchState":
         position_started_at = perf_counter()
         board = board_from_position(position, backend=board_backend)
         position_elapsed = perf_counter() - position_started_at
@@ -415,6 +463,9 @@ class _BatchedSearchState:
             root=_Node(prior=1.0),
             started_at=perf_counter(),
             remaining_simulations=simulation_count,
+            ply=_position_ply(position),
+            move_selection=move_selection,
+            rng=rng,
         )
         state.add_phase_time("position_parse", position_elapsed)
         state.add_phase_time("legal_moves", legal_moves_elapsed)
@@ -437,7 +488,7 @@ class _BatchedSearchState:
                 ),
             )
         return MctsMoveResult(
-            move=max(self.root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0],
+            move=_select_final_move_at_ply(self.root, self.ply, self.move_selection, self.rng),
             policy_targets=_visit_count_policy_targets(self.root),
             performance=_batched_performance_since(
                 self.started_at,
@@ -507,6 +558,45 @@ def _select_child_node(node: _Node, *, c_puct: float) -> tuple[str, _Node] | Non
     if not candidates:
         return None
     return max(candidates, key=score)
+
+
+def _select_final_move(
+    root: _Node,
+    position: UsiPosition,
+    config: MoveSelectionConfig,
+    rng: random.Random,
+) -> str:
+    return _select_final_move_at_ply(root, _position_ply(position), config, rng)
+
+
+def _select_final_move_at_ply(root: _Node, ply: int, config: MoveSelectionConfig, rng: random.Random) -> str:
+    if config.mode == "visit_sample" and ply < config.temperature_plies:
+        return _sample_visit_count_move(root, temperature=config.temperature, rng=rng)
+    return _deterministic_final_move(root)
+
+
+def _deterministic_final_move(root: _Node) -> str:
+    return max(root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0]
+
+
+def _sample_visit_count_move(root: _Node, *, temperature: float, rng: random.Random) -> str:
+    moves = tuple(root.children)
+    weights = [max(0, root.children[move].visit_count) ** (1.0 / temperature) for move in moves]
+    total = sum(weights)
+    if total <= 0:
+        return rng.choice(moves)
+    threshold = rng.random() * total
+    cumulative = 0.0
+    for move, weight in zip(moves, weights, strict=True):
+        cumulative += weight
+        if cumulative >= threshold:
+            return move
+    return moves[-1]
+
+
+def _position_ply(position: UsiPosition) -> int:
+    words = position.command.split()
+    return len(words[words.index("moves") + 1 :]) if "moves" in words else 0
 
 
 def _expand_node_with_evaluation(node: _Node, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:

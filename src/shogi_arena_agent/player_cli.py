@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
-from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
+from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy, evaluation_move_selection_config, self_play_move_selection_config
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.usi import BOARD_BACKENDS
 from shogi_arena_agent.multipv_policy import (
@@ -19,6 +19,7 @@ from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
 PLAYER_KINDS = ("checkpoint", "yaneuraou", "deterministic_legal")
+CHECKPOINT_PROFILES = ("evaluation", "self-play")
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class BuiltPlayer:
 def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-kind", choices=PLAYER_KINDS, required=True)
     parser.add_argument(f"--{prefix}-checkpoint")
+    parser.add_argument(f"--{prefix}-checkpoint-profile", choices=CHECKPOINT_PROFILES, default="evaluation")
     parser.add_argument(f"--{prefix}-checkpoint-policy", choices=("direct", "mcts"), default="mcts")
     parser.add_argument(f"--{prefix}-checkpoint-simulations", type=int, default=16)
     parser.add_argument(f"--{prefix}-checkpoint-evaluation-batch-size", type=int, default=1)
@@ -55,6 +57,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint":
         checkpoint = _arg(args, prefix, "checkpoint")
+        profile = _arg(args, prefix, "checkpoint_profile")
         policy_kind = _arg(args, prefix, "checkpoint_policy")
         simulations = _arg(args, prefix, "checkpoint_simulations")
         evaluation_batch_size = _arg(args, prefix, "checkpoint_evaluation_batch_size")
@@ -71,6 +74,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
             checkpoint,
             policy_kind=policy_kind,
             config=mcts_config,
+            profile=profile,
             device=device,
             board_backend=board_backend,
         )
@@ -81,6 +85,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
                 name=name,
                 settings={
                     "checkpoint": checkpoint,
+                    "profile": profile,
                     "policy": policy_kind,
                     "simulations": mcts_config.simulation_count if policy_kind == "mcts" else None,
                     "evaluation_batch_size": mcts_config.evaluation_batch_size if policy_kind == "mcts" else None,
@@ -139,13 +144,20 @@ def _load_checkpoint_policy(
     *,
     policy_kind: str,
     config: MctsConfig,
+    profile: str,
     device: str,
     board_backend: str,
 ) -> Any:
     if policy_kind == "direct":
         return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device, board_backend=board_backend)
     evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint, device=device)
-    return MctsPolicy(evaluator=evaluator, config=config)
+    return MctsPolicy(evaluator=evaluator, config=config, move_selection=_move_selection_config(profile))
+
+
+def _move_selection_config(profile: str):
+    if profile == "self-play":
+        return self_play_move_selection_config()
+    return evaluation_move_selection_config()
 
 
 def _arg(args: argparse.Namespace, prefix: str, name: str) -> Any:

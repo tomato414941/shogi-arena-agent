@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
-from shogi_arena_agent.mcts_policy import BatchedMctsMoveSelector, MctsConfig
+from shogi_arena_agent.mcts_policy import (
+    BatchedMctsMoveSelector,
+    MctsConfig,
+    evaluation_move_selection_config,
+    self_play_move_selection_config,
+)
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.player_cli import BuiltPlayer, add_player_arguments, build_static_player, player_context, validate_player_arguments
 from shogi_arena_agent.shogi_game import (
@@ -212,6 +217,7 @@ def _checkpoint_selector(args: argparse.Namespace, prefix: str) -> BatchedMctsMo
             evaluation_batch_size=getattr(args, f"{prefix}_checkpoint_evaluation_batch_size"),
             board_backend=args.board_backend,
         ),
+        move_selection=_move_selection_config(getattr(args, f"{prefix}_checkpoint_profile")),
     )
 
 
@@ -221,6 +227,7 @@ def _checkpoint_actor(args: argparse.Namespace, prefix: str, *, name: str) -> Sh
         name=name,
         settings={
             "checkpoint": getattr(args, f"{prefix}_checkpoint"),
+            "profile": getattr(args, f"{prefix}_checkpoint_profile"),
             "policy": getattr(args, f"{prefix}_checkpoint_policy"),
             "simulations": getattr(args, f"{prefix}_checkpoint_simulations"),
             "evaluation_batch_size": getattr(args, f"{prefix}_checkpoint_evaluation_batch_size"),
@@ -230,6 +237,12 @@ def _checkpoint_actor(args: argparse.Namespace, prefix: str, *, name: str) -> Sh
             "board_backend": args.board_backend,
         },
     )
+
+
+def _move_selection_config(profile: str):
+    if profile == "self-play":
+        return self_play_move_selection_config()
+    return evaluation_move_selection_config()
 
 
 def _performance_info_lines(performance: object) -> tuple[str, ...]:
