@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
-from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy, PolicyValueEvaluator
+from shogi_arena_agent.mcts_policy import BatchedMctsMoveSelector, MctsConfig, MctsPolicy, PolicyValueEvaluator
 from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position
 
 
@@ -120,6 +120,21 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertEqual(policy.last_performance.output_count, 8)
         self.assertLess(policy.last_performance.model_call_count, 9)
         self.assertIn(4, evaluator.batch_sizes)
+
+    def test_batched_selector_batches_across_positions(self) -> None:
+        evaluator = BatchCountingEvaluator()
+        selector = BatchedMctsMoveSelector(evaluator, config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+
+        results = selector.select_moves(
+            [
+                UsiPosition(),
+                UsiPosition(command="position startpos moves 7g7f 3c3d"),
+            ]
+        )
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(result.move != "resign" for result in results))
+        self.assertIn(2, evaluator.batch_sizes)
 
     def test_move_time_limit_can_stop_before_simulation_limit(self) -> None:
         policy = MctsPolicy(config=MctsConfig(simulation_count=8, move_time_limit_sec=0.0))

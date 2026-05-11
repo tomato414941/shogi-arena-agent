@@ -151,6 +151,58 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
         self.assertEqual(calls, ["black.pt", "white.pt"])
 
+    def test_parallel_checkpoint_mcts_batches_games(self) -> None:
+        module = _load_script_module()
+        batch_sizes: list[int] = []
+
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, *_args: object, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_batch(self, requests):
+                batch_sizes.append(len(requests))
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with patch.object(module, "ShogiMoveChoiceCheckpointEvaluator", FakeEvaluator), contextlib.redirect_stdout(io.StringIO()):
+                module.main(
+                    [
+                        "--black-kind",
+                        "checkpoint",
+                        "--black-checkpoint",
+                        "black.pt",
+                        "--black-checkpoint-simulations",
+                        "2",
+                        "--black-checkpoint-evaluation-batch-size",
+                        "8",
+                        "--white-kind",
+                        "checkpoint",
+                        "--white-checkpoint",
+                        "white.pt",
+                        "--white-checkpoint-simulations",
+                        "2",
+                        "--white-checkpoint-evaluation-batch-size",
+                        "8",
+                        "--games",
+                        "4",
+                        "--parallel-games",
+                        "4",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+
+        self.assertEqual(len(records), 4)
+        self.assertIn(4, batch_sizes)
+        self.assertEqual(records[0].black_actor.settings["parallel_games"], 4)
+
     def test_deterministic_legal_writes_game_records(self) -> None:
         module = _load_script_module()
 
