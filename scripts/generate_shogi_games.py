@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import shogi
 from collections import Counter
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
 from shogi_arena_agent.mcts_policy import BatchedMctsMoveSelector, MctsConfig
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.player_cli import BuiltPlayer, add_player_arguments, build_static_player, player_context, validate_player_arguments
@@ -20,7 +20,7 @@ from shogi_arena_agent.shogi_game import (
     position_command,
     save_shogi_game_records_jsonl,
 )
-from shogi_arena_agent.usi import UsiPosition
+from shogi_arena_agent.usi import BOARD_BACKENDS, UsiPosition
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -31,6 +31,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--parallel-games", type=int, default=1)
     parser.add_argument("--max-plies", type=int, default=80)
+    parser.add_argument("--board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     args = parser.parse_args(argv)
 
     validate_player_arguments(parser, args, "black")
@@ -62,6 +63,7 @@ def _play_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
                     black_actor=black.actor,
                     white_actor=white.actor,
                     max_plies=args.max_plies,
+                    board_backend=args.board_backend,
                 )
             )
     return tuple(records)
@@ -73,13 +75,16 @@ def _play_batched_checkpoint_mcts_games(args: argparse.Namespace) -> tuple[Shogi
     white_actor = _checkpoint_actor(args, "white", name="white")
     black_selector = _checkpoint_selector(args, "black")
     white_selector = _checkpoint_selector(args, "white")
-    games = [_ActiveBatchedGame(black_actor=black_actor, white_actor=white_actor) for _ in range(args.games)]
+    games = [
+        _ActiveBatchedGame(black_actor=black_actor, white_actor=white_actor, board_backend=args.board_backend)
+        for _ in range(args.games)
+    ]
     remaining = set(range(args.games))
     for _ply in range(args.max_plies):
         if not remaining:
             break
-        black_indexes = [index for index in sorted(remaining) if games[index].board.turn == shogi.BLACK]
-        white_indexes = [index for index in sorted(remaining) if games[index].board.turn == shogi.WHITE]
+        black_indexes = [index for index in sorted(remaining) if board_is_black_turn(games[index].board)]
+        white_indexes = [index for index in sorted(remaining) if not board_is_black_turn(games[index].board)]
         for indexes, selector in ((black_indexes, black_selector), (white_indexes, white_selector)):
             for offset in range(0, len(indexes), args.parallel_games):
                 batch_indexes = indexes[offset : offset + args.parallel_games]
@@ -106,8 +111,8 @@ def _player_context(
 
 
 class _ActiveBatchedGame:
-    def __init__(self, *, black_actor: ShogiActorSpec, white_actor: ShogiActorSpec) -> None:
-        self.board = shogi.Board()
+    def __init__(self, *, black_actor: ShogiActorSpec, white_actor: ShogiActorSpec, board_backend: str) -> None:
+        self.board = new_board(backend=board_backend)
         self.black_actor = black_actor
         self.white_actor = white_actor
         self.initial_position_sfen = self.board.sfen()
@@ -120,17 +125,17 @@ class _ActiveBatchedGame:
         return tuple(transition.action_usi for transition in self.transitions)
 
     def apply_move(self, move: str, info_lines: tuple[str, ...]) -> bool:
-        side = "black" if self.board.turn == shogi.BLACK else "white"
-        legal_moves = tuple(sorted(legal_move.usi() for legal_move in self.board.legal_moves))
+        side = board_turn_name(self.board)
+        legal_moves = legal_move_usis(self.board)
         position_sfen = self.board.sfen()
         if move == "resign" or move not in legal_moves:
-            self.winner = "white" if self.board.turn == shogi.BLACK else "black"
+            self.winner = "white" if board_is_black_turn(self.board) else "black"
             self.end_reason = "resign" if move == "resign" else "illegal_move"
             self._finalize_rewards()
             return True
         self.board.push_usi(move)
         done = self.board.is_game_over()
-        self.winner = "black" if done and self.board.turn == shogi.WHITE else "white" if done else None
+        self.winner = "black" if done and not board_is_black_turn(self.board) else "white" if done else None
         self.transitions.append(
             ShogiTransitionRecord(
                 ply=len(self.transitions),
@@ -198,6 +203,7 @@ def _checkpoint_selector(args: argparse.Namespace, prefix: str) -> BatchedMctsMo
         config=MctsConfig(
             simulation_count=getattr(args, f"{prefix}_checkpoint_simulations"),
             evaluation_batch_size=getattr(args, f"{prefix}_checkpoint_evaluation_batch_size"),
+            board_backend=args.board_backend,
         ),
     )
 
@@ -214,6 +220,7 @@ def _checkpoint_actor(args: argparse.Namespace, prefix: str, *, name: str) -> Sh
             "move_time_limit_sec": getattr(args, f"{prefix}_checkpoint_move_time_limit_sec"),
             "device": getattr(args, f"{prefix}_checkpoint_device"),
             "parallel_games": args.parallel_games,
+            "board_backend": args.board_backend,
         },
     )
 

@@ -206,6 +206,53 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             any(line.startswith("info string intrep_batch_performance ") for line in records[0].transitions[0].decision_usi_info_lines)
         )
 
+    def test_parallel_checkpoint_mcts_accepts_cshogi_backend(self) -> None:
+        module = _load_script_module()
+
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, *_args: object, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_batch(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with patch.object(module, "ShogiMoveChoiceCheckpointEvaluator", FakeEvaluator), contextlib.redirect_stdout(io.StringIO()):
+                module.main(
+                    [
+                        "--black-kind",
+                        "checkpoint",
+                        "--black-checkpoint",
+                        "black.pt",
+                        "--black-checkpoint-simulations",
+                        "2",
+                        "--white-kind",
+                        "checkpoint",
+                        "--white-checkpoint",
+                        "white.pt",
+                        "--white-checkpoint-simulations",
+                        "2",
+                        "--games",
+                        "2",
+                        "--parallel-games",
+                        "2",
+                        "--board-backend",
+                        "cshogi",
+                        "--max-plies",
+                        "1",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].black_actor.settings["board_backend"], "cshogi")
+
     def test_deterministic_legal_writes_game_records(self) -> None:
         module = _load_script_module()
 

@@ -6,8 +6,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-import shogi
-
+from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine
 from shogi_arena_agent.usi_process import UsiGoResult
 
@@ -117,8 +116,9 @@ def play_shogi_game(
     black_actor: ShogiActorSpec | None = None,
     white_actor: ShogiActorSpec | None = None,
     max_plies: int = 32,
+    board_backend: str = "python-shogi",
 ) -> ShogiGameRecord:
-    board = shogi.Board()
+    board = new_board(backend=board_backend)
     initial_position_sfen = board.sfen()
     black_engine = black or UsiEngine(name="black")
     white_engine = white or UsiEngine(name="white")
@@ -134,14 +134,14 @@ def play_shogi_game(
         player = players[ply % 2]
         moves = tuple(record.action_usi for record in transitions)
         position = position_command(moves)
-        side = "black" if board.turn == shogi.BLACK else "white"
+        side = board_turn_name(board)
         position_sfen = board.sfen()
-        legal_moves = tuple(sorted(legal_move.usi() for legal_move in board.legal_moves))
+        legal_moves = legal_move_usis(board)
         player.position(position)
         go_result = _coerce_go_result(player.go())
         move = go_result.bestmove
         if move == RESIGN_MOVE:
-            winner = "white" if board.turn == shogi.BLACK else "black"
+            winner = "white" if board_is_black_turn(board) else "black"
             return ShogiGameRecord(
                 black_actor=black_spec,
                 white_actor=white_spec,
@@ -152,7 +152,7 @@ def play_shogi_game(
             )
 
         if move not in legal_moves:
-            winner = "white" if board.turn == shogi.BLACK else "black"
+            winner = "white" if board_is_black_turn(board) else "black"
             return ShogiGameRecord(
                 black_actor=black_spec,
                 white_actor=white_spec,
@@ -164,7 +164,7 @@ def play_shogi_game(
 
         board.push_usi(move)
         done = board.is_game_over()
-        winner = "black" if done and board.turn == shogi.WHITE else "white" if done else None
+        winner = "black" if done and not board_is_black_turn(board) else "white" if done else None
         transitions.append(
             ShogiTransitionRecord(
                 ply=ply,

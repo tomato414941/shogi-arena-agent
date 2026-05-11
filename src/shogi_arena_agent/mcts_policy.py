@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 import math
-import copy
 from collections.abc import Sequence
 from time import perf_counter
 from dataclasses import dataclass, field
 from typing import Protocol
 
-import shogi
-
+from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis, validate_board_backend
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 
 
 class PolicyValueEvaluator(Protocol):
     def evaluate_batch(
         self,
-        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
     ) -> list[tuple[dict[str, float], float]]:
         """Return move priors and values from the side-to-move perspective."""
 
@@ -26,6 +24,7 @@ class MctsConfig:
     c_puct: float = 1.5
     evaluation_batch_size: int = 1
     move_time_limit_sec: float | None = None
+    board_backend: str = "python-shogi"
 
     def __post_init__(self) -> None:
         if self.simulation_count <= 0:
@@ -36,6 +35,7 @@ class MctsConfig:
             raise ValueError("evaluation_batch_size must be positive")
         if self.move_time_limit_sec is not None and self.move_time_limit_sec < 0.0:
             raise ValueError("move_time_limit_sec must be non-negative")
+        validate_board_backend(self.board_backend)
 
 
 @dataclass(frozen=True)
@@ -71,7 +71,7 @@ class MctsBatchPerformance:
 class UniformPolicyValueEvaluator:
     def evaluate_batch(
         self,
-        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
     ) -> list[tuple[dict[str, float], float]]:
         evaluations: list[tuple[dict[str, float], float]] = []
         for _board, legal_moves in requests:
@@ -101,8 +101,8 @@ class MctsPolicy:
         started_at = perf_counter()
         self._model_call_count = 0
         self._model_wall_time_sec = 0.0
-        board = board_from_position(position)
-        legal_moves = _legal_move_usis(board)
+        board = board_from_position(position, backend=self.config.board_backend)
+        legal_moves = legal_move_usis(board)
         if not legal_moves:
             self.last_policy_targets = None
             self.last_performance = self._performance_since(started_at, output_count=0)
@@ -127,18 +127,18 @@ class MctsPolicy:
         self.last_performance = self._performance_since(started_at, output_count=completed_simulations)
         return max(root.children.items(), key=lambda item: (item[1].visit_count, -item[1].value_mean, item[0]))[0]
 
-    def _run_simulation_batch(self, root: _Node, board: shogi.Board, *, max_count: int) -> int:
+    def _run_simulation_batch(self, root: _Node, board: ShogiBoard, *, max_count: int) -> int:
         pending: list[_PendingSimulation] = []
         completed = 0
         for _ in range(max_count):
-            simulation = self._select_simulation(root, copy.deepcopy(board))
+            simulation = self._select_simulation(root, copy_board(board))
             if simulation is None:
                 break
             if simulation.board.is_game_over():
                 self._backpropagate(simulation.path, -1.0)
                 completed += 1
                 continue
-            legal_moves = _legal_move_usis(simulation.board)
+            legal_moves = legal_move_usis(simulation.board)
             if not legal_moves:
                 self._backpropagate(simulation.path, -1.0)
                 completed += 1
@@ -162,7 +162,7 @@ class MctsPolicy:
             completed += len(pending)
         return completed
 
-    def _select_simulation(self, root: _Node, board: shogi.Board) -> _SelectedSimulation | None:
+    def _select_simulation(self, root: _Node, board: ShogiBoard) -> _SelectedSimulation | None:
         node = root
         path = [node]
         while node.children:
@@ -180,8 +180,8 @@ class MctsPolicy:
             visited_node.value_sum += value
             value = -value
 
-    def _expand(self, node: _Node, board: shogi.Board) -> float:
-        legal_moves = _legal_move_usis(board)
+    def _expand(self, node: _Node, board: ShogiBoard) -> float:
+        legal_moves = legal_move_usis(board)
         if not legal_moves:
             return -1.0
 
@@ -237,7 +237,10 @@ class BatchedMctsMoveSelector:
     def select_moves(self, positions: Sequence[UsiPosition]) -> list[MctsMoveResult]:
         started_at = perf_counter()
         batch_stats = _BatchSearchStats(position_count=len(positions))
-        states = [_BatchedSearchState.from_position(position, self.config.simulation_count) for position in positions]
+        states = [
+            _BatchedSearchState.from_position(position, self.config.simulation_count, board_backend=self.config.board_backend)
+            for position in positions
+        ]
         for state in states:
             batch_stats.add_phase_times(state.phase_wall_time_sec)
         active_states = [state for state in states if state.legal_moves]
@@ -250,7 +253,7 @@ class BatchedMctsMoveSelector:
                 if state.remaining_simulations <= 0:
                     continue
                 board_copy_started_at = perf_counter()
-                board = copy.deepcopy(state.board)
+                board = copy_board(state.board)
                 board_copy_elapsed = perf_counter() - board_copy_started_at
                 state.add_phase_time("board_copy", board_copy_elapsed)
                 batch_stats.add_phase_time("board_copy", board_copy_elapsed)
@@ -275,7 +278,7 @@ class BatchedMctsMoveSelector:
                     made_progress = True
                     continue
                 legal_moves_started_at = perf_counter()
-                legal_moves = _legal_move_usis(simulation.board)
+                legal_moves = legal_move_usis(simulation.board)
                 legal_moves_elapsed = perf_counter() - legal_moves_started_at
                 state.add_phase_time("legal_moves", legal_moves_elapsed)
                 batch_stats.add_phase_time("legal_moves", legal_moves_elapsed)
@@ -375,20 +378,20 @@ class _Node:
 @dataclass
 class _SelectedSimulation:
     path: list[_Node]
-    board: shogi.Board
+    board: ShogiBoard
     node: _Node
 
 
 @dataclass
 class _PendingSimulation:
     path: list[_Node]
-    board: shogi.Board
+    board: ShogiBoard
     legal_moves: tuple[str, ...]
 
 
 @dataclass
 class _BatchedSearchState:
-    board: shogi.Board
+    board: ShogiBoard
     legal_moves: tuple[str, ...]
     root: _Node
     started_at: float
@@ -399,12 +402,12 @@ class _BatchedSearchState:
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
     @classmethod
-    def from_position(cls, position: UsiPosition, simulation_count: int) -> "_BatchedSearchState":
+    def from_position(cls, position: UsiPosition, simulation_count: int, *, board_backend: str) -> "_BatchedSearchState":
         position_started_at = perf_counter()
-        board = board_from_position(position)
+        board = board_from_position(position, backend=board_backend)
         position_elapsed = perf_counter() - position_started_at
         legal_moves_started_at = perf_counter()
-        legal_moves = _legal_move_usis(board)
+        legal_moves = legal_move_usis(board)
         legal_moves_elapsed = perf_counter() - legal_moves_started_at
         state = cls(
             board=board,
@@ -479,11 +482,7 @@ class _BatchSearchStats:
         )
 
 
-def _legal_move_usis(board: shogi.Board) -> tuple[str, ...]:
-    return tuple(sorted(move.usi() for move in board.legal_moves))
-
-
-def _select_pending_simulation(root: _Node, board: shogi.Board, *, c_puct: float) -> _SelectedSimulation | None:
+def _select_pending_simulation(root: _Node, board: ShogiBoard, *, c_puct: float) -> _SelectedSimulation | None:
     node = root
     path = [node]
     while node.children:

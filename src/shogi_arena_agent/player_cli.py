@@ -8,6 +8,7 @@ from typing import Any, Iterator
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
+from shogi_arena_agent.usi import BOARD_BACKENDS
 from shogi_arena_agent.multipv_policy import (
     MultiPVPolicyTargetConfig,
     MultiPVPolicyTargetPlayer,
@@ -34,6 +35,7 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-checkpoint-evaluation-batch-size", type=int, default=1)
     parser.add_argument(f"--{prefix}-checkpoint-move-time-limit-sec", type=float)
     parser.add_argument(f"--{prefix}-checkpoint-device", default="cpu")
+    parser.add_argument(f"--{prefix}-checkpoint-board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     parser.add_argument(f"--{prefix}-yaneuraou-command")
     parser.add_argument(f"--{prefix}-yaneuraou-go-command", default="go nodes 1")
     parser.add_argument(f"--{prefix}-yaneuraou-read-timeout-seconds", type=float, default=10.0)
@@ -58,12 +60,20 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
         evaluation_batch_size = _arg(args, prefix, "checkpoint_evaluation_batch_size")
         move_time_limit_sec = _arg(args, prefix, "checkpoint_move_time_limit_sec")
         device = _arg(args, prefix, "checkpoint_device")
+        board_backend = _arg(args, prefix, "checkpoint_board_backend")
         mcts_config = MctsConfig(
             simulation_count=simulations,
             evaluation_batch_size=evaluation_batch_size,
             move_time_limit_sec=move_time_limit_sec,
+            board_backend=board_backend,
         )
-        policy = _load_checkpoint_policy(checkpoint, policy_kind=policy_kind, config=mcts_config, device=device)
+        policy = _load_checkpoint_policy(
+            checkpoint,
+            policy_kind=policy_kind,
+            config=mcts_config,
+            device=device,
+            board_backend=board_backend,
+        )
         return BuiltPlayer(
             player=UsiEngine(name=name, policy=policy),
             actor=ShogiActorSpec(
@@ -76,6 +86,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
                     "evaluation_batch_size": mcts_config.evaluation_batch_size if policy_kind == "mcts" else None,
                     "move_time_limit_sec": mcts_config.move_time_limit_sec if policy_kind == "mcts" else None,
                     "device": device,
+                    "board_backend": board_backend,
                 },
             ),
         )
@@ -123,9 +134,16 @@ def player_context(args: argparse.Namespace, prefix: str, *, name: str) -> Itera
         yield BuiltPlayer(player=player, actor=actor)
 
 
-def _load_checkpoint_policy(checkpoint: str, *, policy_kind: str, config: MctsConfig, device: str) -> Any:
+def _load_checkpoint_policy(
+    checkpoint: str,
+    *,
+    policy_kind: str,
+    config: MctsConfig,
+    device: str,
+    board_backend: str,
+) -> Any:
     if policy_kind == "direct":
-        return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device)
+        return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device, board_backend=board_backend)
     evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint, device=device)
     return MctsPolicy(evaluator=evaluator, config=config)
 

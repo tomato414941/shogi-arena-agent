@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Protocol
 
+import cshogi
 import shogi
 
 RESIGN_MOVE = "resign"
+BOARD_BACKENDS = ("python-shogi", "cshogi")
 
 
 @dataclass(frozen=True)
@@ -18,22 +20,33 @@ class MovePolicy(Protocol):
         """Return a USI move string such as 7g7f."""
 
 
-def board_from_position(position: UsiPosition) -> shogi.Board:
+def board_from_position(position: UsiPosition, *, backend: str = "python-shogi") -> shogi.Board | cshogi.Board:
+    if backend not in BOARD_BACKENDS:
+        raise ValueError(f"unsupported board backend: {backend}")
     words = position.command.split()
     if words[:2] == ["position", "startpos"]:
-        board = shogi.Board()
+        board = _new_board(backend)
         moves = words[words.index("moves") + 1 :] if "moves" in words else []
     elif words[:2] == ["position", "sfen"]:
         moves_index = words.index("moves") if "moves" in words else len(words)
         sfen = " ".join(words[2:moves_index])
-        board = shogi.Board(sfen)
+        board = _new_board(backend, sfen=sfen)
         moves = words[moves_index + 1 :] if moves_index < len(words) else []
     else:
-        board = shogi.Board()
+        board = _new_board(backend)
         moves = []
 
     for move in moves:
         board.push_usi(move)
+    return board
+
+
+def _new_board(backend: str, *, sfen: str | None = None) -> shogi.Board | cshogi.Board:
+    if backend == "python-shogi":
+        return shogi.Board(sfen) if sfen is not None else shogi.Board()
+    board = cshogi.Board()
+    if sfen is not None:
+        board.set_sfen(sfen)
     return board
 
 
