@@ -148,6 +148,20 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertGreater(phases["expand"], 0.0)
         self.assertGreater(phases["backup"], 0.0)
 
+    def test_batched_selector_records_batch_performance(self) -> None:
+        selector = BatchedMctsMoveSelector(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+
+        selector.select_moves([UsiPosition(), UsiPosition()])
+
+        performance = selector.last_batch_performance
+        self.assertIsNotNone(performance)
+        assert performance is not None
+        self.assertEqual(performance.position_count, 2)
+        self.assertEqual(performance.completed_simulations, 8)
+        self.assertGreater(performance.request_wall_time_sec, 0.0)
+        self.assertGreater(performance.model_call_count, 0)
+        self.assertGreater(performance.phase_wall_time_sec["legal_moves"], 0.0)
+
     def test_move_time_limit_can_stop_before_simulation_limit(self) -> None:
         policy = MctsPolicy(config=MctsConfig(simulation_count=8, move_time_limit_sec=0.0))
 

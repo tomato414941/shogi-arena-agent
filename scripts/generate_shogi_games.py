@@ -85,8 +85,10 @@ def _play_batched_checkpoint_mcts_games(args: argparse.Namespace) -> tuple[Shogi
                 batch_indexes = indexes[offset : offset + args.parallel_games]
                 positions = [UsiPosition(position_command(games[index].moves)) for index in batch_indexes]
                 results = selector.select_moves(positions)
+                batch_info_lines = _batch_performance_info_lines(selector.last_batch_performance)
                 for game_index, result in zip(batch_indexes, results, strict=True):
-                    if game_index in remaining and games[game_index].apply_move(result.move, _performance_info_lines(result.performance)):
+                    info_lines = _performance_info_lines(result.performance) + batch_info_lines
+                    if game_index in remaining and games[game_index].apply_move(result.move, info_lines):
                         remaining.remove(game_index)
     return tuple(game.to_record() for game in games)
 
@@ -218,6 +220,12 @@ def _checkpoint_actor(args: argparse.Namespace, prefix: str, *, name: str) -> Sh
 
 def _performance_info_lines(performance: object) -> tuple[str, ...]:
     return ("info string intrep_performance " + json.dumps(asdict(performance), sort_keys=True),)
+
+
+def _batch_performance_info_lines(performance: object | None) -> tuple[str, ...]:
+    if performance is None:
+        return ()
+    return ("info string intrep_batch_performance " + json.dumps(asdict(performance), sort_keys=True),)
 
 
 def _transition_reward(*, side: str, winner: str | None, done: bool) -> float:

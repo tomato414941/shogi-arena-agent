@@ -202,6 +202,9 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(records), 4)
         self.assertIn(4, batch_sizes)
         self.assertEqual(records[0].black_actor.settings["parallel_games"], 4)
+        self.assertTrue(
+            any(line.startswith("info string intrep_batch_performance ") for line in records[0].transitions[0].decision_usi_info_lines)
+        )
 
     def test_deterministic_legal_writes_game_records(self) -> None:
         module = _load_script_module()
