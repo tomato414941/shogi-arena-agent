@@ -64,13 +64,28 @@ class UsiEngineTest(unittest.TestCase):
         self.assertIn("3c3d", {move.usi() for move in board.legal_moves})
 
     def test_cshogi_board_from_position_matches_python_shogi_legal_moves(self) -> None:
-        position = UsiPosition(command="position startpos moves 7g7f 3c3d 2g2f")
+        positions = [
+            UsiPosition(),
+            UsiPosition(command="position startpos moves 7g7f 3c3d 2g2f"),
+            UsiPosition(command="position startpos moves 2g2f 8c8d 2f2e 8d8e 2e2d 8e8f 2d2c+"),
+            UsiPosition(command="position startpos moves 7g7f 3c3d 8h2b+ 3a2b B*4e"),
+            UsiPosition(command="position startpos moves 7g7f 3c3d 8h2b+ 3a2b B*5e"),
+            UsiPosition(
+                command=(
+                    "position sfen "
+                    "lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2 "
+                    "moves 3c3d 2g2f"
+                )
+            ),
+        ]
 
-        python_board = board_from_position(position, backend="python-shogi")
-        cshogi_board = board_from_position(position, backend="cshogi")
+        for position in positions:
+            with self.subTest(position=position.command):
+                python_board = board_from_position(position, backend="python-shogi")
+                cshogi_board = board_from_position(position, backend="cshogi")
 
-        self.assertEqual(python_board.sfen(), cshogi_board.sfen())
-        self.assertEqual(legal_move_usis(python_board), legal_move_usis(cshogi_board))
+                self.assertEqual(python_board.sfen(), cshogi_board.sfen())
+                self.assertEqual(legal_move_usis(python_board), legal_move_usis(cshogi_board))
 
     def test_run_loop_stops_on_quit(self) -> None:
         output = run_usi_loop(["usi\n", "isready\n", "quit\n", "usi\n"])
