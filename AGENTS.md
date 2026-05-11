@@ -20,4 +20,5 @@
 - 小さく頻繁にコミットする。
 - 実装後は関連テストを実行する。
 - まだ外部サービス接続を自動化しない。まずローカル USI とローカル対局を優先する。
+- Computer-shogi CLI defaults should use `max-plies=320`; shorter overrides are allowed only with a warning.
 - ShogiGameRecord schema is mirrored with `../intelligence-representation`; update both repositories' read/write/tests together when changing it.

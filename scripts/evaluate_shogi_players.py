@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict
 from pathlib import Path
@@ -12,6 +13,9 @@ from shogi_arena_agent.match_evaluation import summarize_match_results
 from shogi_arena_agent.player_cli import BuiltPlayer, add_player_arguments, build_static_player, player_context, validate_player_arguments
 from shogi_arena_agent.shogi_game import ShogiGameRecord, play_shogi_game, save_shogi_game_records_jsonl
 
+STANDARD_MAX_PLIES = 320
+DEFAULT_MAX_PLIES = 320
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Evaluate two shogi players with alternating sides.")
@@ -19,13 +23,16 @@ def main(argv: list[str] | None = None) -> None:
     add_player_arguments(parser, "opponent")
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--games", type=int, default=2)
-    parser.add_argument("--max-plies", type=int, default=80)
+    # Computer-shogi evaluation should not end as a short artificial draw; use
+    # the WCSC-style 320-ply cap as the default and warn on shorter overrides.
+    parser.add_argument("--max-plies", type=int, default=DEFAULT_MAX_PLIES)
     args = parser.parse_args(argv)
 
     validate_player_arguments(parser, args, "player")
     validate_player_arguments(parser, args, "opponent")
     if args.games <= 0:
         parser.error("--games must be positive")
+    _warn_short_max_plies(args.max_plies)
 
     results, player_sides = _evaluate(args)
     evaluation = summarize_match_results(results, player_sides)
@@ -132,6 +139,15 @@ def _percentile(values: list[float], fraction: float) -> float:
     sorted_values = sorted(values)
     index = min(len(sorted_values) - 1, max(0, int(round(fraction * (len(sorted_values) - 1)))))
     return sorted_values[index]
+
+
+def _warn_short_max_plies(max_plies: int) -> None:
+    if max_plies < STANDARD_MAX_PLIES:
+        print(
+            f"warning: --max-plies {max_plies} is below the computer-shogi standard cap "
+            f"of {STANDARD_MAX_PLIES}; this can create artificial max_plies draws.",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

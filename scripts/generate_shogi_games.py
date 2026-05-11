@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict
@@ -22,6 +23,9 @@ from shogi_arena_agent.shogi_game import (
 )
 from shogi_arena_agent.usi import BOARD_BACKENDS, UsiPosition
 
+STANDARD_MAX_PLIES = 320
+DEFAULT_MAX_PLIES = 320
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Play fixed-side shogi games and write raw game logs.")
@@ -30,7 +34,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--parallel-games", type=int, default=1)
-    parser.add_argument("--max-plies", type=int, default=80)
+    # Computer-shogi self-play should not end as a short artificial draw; use
+    # the WCSC-style 320-ply cap as the default and warn on shorter overrides.
+    parser.add_argument("--max-plies", type=int, default=DEFAULT_MAX_PLIES)
     parser.add_argument("--board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     args = parser.parse_args(argv)
 
@@ -40,6 +46,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--games must be positive")
     if args.parallel_games <= 0:
         parser.error("--parallel-games must be positive")
+    _warn_short_max_plies(args.max_plies)
 
     records = _play_games(args)
     save_shogi_game_records_jsonl(records, Path(args.out))
@@ -251,6 +258,15 @@ def _records_summary(records: tuple[ShogiGameRecord, ...]) -> dict[str, Any]:
         "white_wins": sum(1 for record in records if record.winner == "white"),
         "draws": sum(1 for record in records if record.winner is None),
     }
+
+
+def _warn_short_max_plies(max_plies: int) -> None:
+    if max_plies < STANDARD_MAX_PLIES:
+        print(
+            f"warning: --max-plies {max_plies} is below the computer-shogi standard cap "
+            f"of {STANDARD_MAX_PLIES}; this can create artificial max_plies draws.",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

@@ -144,7 +144,7 @@ uv run python scripts/evaluate_shogi_players.py \
   --opponent-yaneuraou-command /path/to/YaneuraOu \
   --opponent-yaneuraou-go-command "go nodes 1" \
   --games 2 \
-  --max-plies 64 \
+  --max-plies 320 \
   --out runs/shogi/evaluation.jsonl
 ```
 
@@ -160,7 +160,7 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --white-yaneuraou-command /path/to/YaneuraOu \
   --white-yaneuraou-go-command "go nodes 1" \
   --games 2 \
-  --max-plies 80 \
+  --max-plies 320 \
   --out runs/shogi/games.jsonl
 ```
 
@@ -175,7 +175,7 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --white-checkpoint /path/to/checkpoint.pt \
   --white-checkpoint-policy direct \
   --games 2 \
-  --max-plies 80 \
+  --max-plies 320 \
   --out runs/shogi/self-play.jsonl
 ```
 
@@ -190,7 +190,7 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --white-yaneuraou-command /path/to/YaneuraOu \
   --white-yaneuraou-go-command "go nodes 1" \
   --games 2 \
-  --max-plies 80 \
+  --max-plies 320 \
   --out runs/shogi/yaneuraou-self.jsonl
 ```
 
@@ -204,7 +204,7 @@ MCTS_SIMULATIONS=4096 \
 MCTS_BATCH_SIZE=64 \
 MCTS_MOVE_TIME_LIMIT_SEC=9.0 \
 GAMES=1 \
-MAX_PLIES=80 \
+MAX_PLIES=320 \
 ./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
 ```
 
