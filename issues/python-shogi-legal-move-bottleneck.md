@@ -1,4 +1,4 @@
-# Batched MCTS CPU Bottleneck
+# Python-Shogi Legal Move Bottleneck
 
 Status: closed.
 
