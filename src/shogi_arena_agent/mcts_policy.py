@@ -46,6 +46,7 @@ class MctsMovePerformance:
     non_model_wall_time_sec: float
     output_count: int
     output_per_sec: float
+    phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -231,19 +232,31 @@ class BatchedMctsMoveSelector:
             for state in active_states:
                 if state.remaining_simulations <= 0:
                     continue
-                simulation = _select_pending_simulation(state.root, copy.deepcopy(state.board), c_puct=self.config.c_puct)
+                board_copy_started_at = perf_counter()
+                board = copy.deepcopy(state.board)
+                state.add_phase_time("board_copy", perf_counter() - board_copy_started_at)
+
+                selection_started_at = perf_counter()
+                simulation = _select_pending_simulation(state.root, board, c_puct=self.config.c_puct)
+                state.add_phase_time("selection", perf_counter() - selection_started_at)
                 if simulation is None:
                     state.remaining_simulations = 0
                     continue
                 if simulation.board.is_game_over():
+                    backup_started_at = perf_counter()
                     _backpropagate_path(simulation.path, -1.0)
+                    state.add_phase_time("backup", perf_counter() - backup_started_at)
                     state.completed_simulations += 1
                     state.remaining_simulations -= 1
                     made_progress = True
                     continue
+                legal_moves_started_at = perf_counter()
                 legal_moves = _legal_move_usis(simulation.board)
+                state.add_phase_time("legal_moves", perf_counter() - legal_moves_started_at)
                 if not legal_moves:
+                    backup_started_at = perf_counter()
                     _backpropagate_path(simulation.path, -1.0)
+                    state.add_phase_time("backup", perf_counter() - backup_started_at)
                     state.completed_simulations += 1
                     state.remaining_simulations -= 1
                     made_progress = True
@@ -266,20 +279,32 @@ class BatchedMctsMoveSelector:
         if len(evaluations) != len(states):
             raise ValueError("batch evaluator must return one evaluation per request")
         for state, (priors, _value) in zip(states, evaluations, strict=True):
+            expand_started_at = perf_counter()
             _expand_node_with_evaluation(state.root, state.legal_moves, priors)
+            state.add_phase_time("expand", perf_counter() - expand_started_at)
             state.model_call_count += 1
             state.model_wall_time_sec += elapsed
 
     def _evaluate_pending(self, pending: Sequence[tuple["_BatchedSearchState", _PendingSimulation]]) -> None:
+        batch_build_started_at = perf_counter()
+        requests = tuple((simulation.board, simulation.legal_moves) for _state, simulation in pending)
+        batch_build_elapsed = perf_counter() - batch_build_started_at
+        for state, _simulation in pending:
+            state.add_phase_time("batch_build", batch_build_elapsed)
+
         started_at = perf_counter()
-        evaluations = self.evaluator.evaluate_batch(tuple((simulation.board, simulation.legal_moves) for _state, simulation in pending))
+        evaluations = self.evaluator.evaluate_batch(requests)
         elapsed = perf_counter() - started_at
         if len(evaluations) != len(pending):
             raise ValueError("batch evaluator must return one evaluation per request")
         for (state, simulation), (priors, value) in zip(pending, evaluations, strict=True):
             simulation.path[-1].pending = False
+            expand_started_at = perf_counter()
             _expand_node_with_evaluation(simulation.path[-1], simulation.legal_moves, priors)
+            state.add_phase_time("expand", perf_counter() - expand_started_at)
+            backup_started_at = perf_counter()
             _backpropagate_path(simulation.path, max(-1.0, min(1.0, float(value))))
+            state.add_phase_time("backup", perf_counter() - backup_started_at)
             state.completed_simulations += 1
             state.remaining_simulations -= 1
             state.model_call_count += 1
@@ -325,17 +350,29 @@ class _BatchedSearchState:
     completed_simulations: int = 0
     model_call_count: int = 0
     model_wall_time_sec: float = 0.0
+    phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
     @classmethod
     def from_position(cls, position: UsiPosition, simulation_count: int) -> "_BatchedSearchState":
+        position_started_at = perf_counter()
         board = board_from_position(position)
-        return cls(
+        position_elapsed = perf_counter() - position_started_at
+        legal_moves_started_at = perf_counter()
+        legal_moves = _legal_move_usis(board)
+        legal_moves_elapsed = perf_counter() - legal_moves_started_at
+        state = cls(
             board=board,
-            legal_moves=_legal_move_usis(board),
+            legal_moves=legal_moves,
             root=_Node(prior=1.0),
             started_at=perf_counter(),
             remaining_simulations=simulation_count,
         )
+        state.add_phase_time("position_parse", position_elapsed)
+        state.add_phase_time("legal_moves", legal_moves_elapsed)
+        return state
+
+    def add_phase_time(self, name: str, elapsed: float) -> None:
+        self.phase_wall_time_sec[name] = self.phase_wall_time_sec.get(name, 0.0) + elapsed
 
     def to_result(self) -> MctsMoveResult:
         if not self.legal_moves:
@@ -347,6 +384,7 @@ class _BatchedSearchState:
                     model_call_count=self.model_call_count,
                     model_wall_time_sec=self.model_wall_time_sec,
                     output_count=0,
+                    phase_wall_time_sec=self.phase_wall_time_sec,
                 ),
             )
         return MctsMoveResult(
@@ -357,6 +395,7 @@ class _BatchedSearchState:
                 model_call_count=self.model_call_count,
                 model_wall_time_sec=self.model_wall_time_sec,
                 output_count=self.completed_simulations,
+                phase_wall_time_sec=self.phase_wall_time_sec,
             ),
         )
 
@@ -410,9 +449,12 @@ def _batched_performance_since(
     model_call_count: int,
     model_wall_time_sec: float,
     output_count: int,
+    phase_wall_time_sec: dict[str, float],
 ) -> MctsMovePerformance:
     request_wall_time_sec = perf_counter() - started_at
     non_model_wall_time_sec = max(0.0, request_wall_time_sec - model_wall_time_sec)
+    phase_times = dict(sorted(phase_wall_time_sec.items()))
+    phase_times["unattributed_wait"] = max(0.0, non_model_wall_time_sec - sum(phase_times.values()))
     output_per_sec = output_count / request_wall_time_sec if request_wall_time_sec > 0 else 0.0
     return MctsMovePerformance(
         request_wall_time_sec=request_wall_time_sec,
@@ -421,6 +463,7 @@ def _batched_performance_since(
         non_model_wall_time_sec=non_model_wall_time_sec,
         output_count=output_count,
         output_per_sec=output_per_sec,
+        phase_wall_time_sec=phase_times,
     )
 
 

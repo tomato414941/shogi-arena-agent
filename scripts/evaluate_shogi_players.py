@@ -121,7 +121,8 @@ def _transition_performance_samples(info_lines: tuple[str, ...]) -> list[dict[st
     samples: list[dict[str, float]] = []
     for line in info_lines:
         if line.startswith(prefix):
-            samples.append({key: float(value) for key, value in json.loads(line[len(prefix) :]).items()})
+            payload = json.loads(line[len(prefix) :])
+            samples.append({key: float(value) for key, value in payload.items() if isinstance(value, int | float)})
     return samples
 
 

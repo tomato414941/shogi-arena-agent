@@ -136,6 +136,18 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertTrue(all(result.move != "resign" for result in results))
         self.assertIn(2, evaluator.batch_sizes)
 
+    def test_batched_selector_records_phase_timings(self) -> None:
+        selector = BatchedMctsMoveSelector(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+
+        result = selector.select_moves([UsiPosition()])[0]
+
+        phases = result.performance.phase_wall_time_sec
+        self.assertGreater(phases["legal_moves"], 0.0)
+        self.assertGreater(phases["board_copy"], 0.0)
+        self.assertGreater(phases["selection"], 0.0)
+        self.assertGreater(phases["expand"], 0.0)
+        self.assertGreater(phases["backup"], 0.0)
+
     def test_move_time_limit_can_stop_before_simulation_limit(self) -> None:
         policy = MctsPolicy(config=MctsConfig(simulation_count=8, move_time_limit_sec=0.0))
 

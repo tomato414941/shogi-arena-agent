@@ -74,7 +74,7 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
                     decision_usi_info_lines=(
                         'info string intrep_performance {"model_call_count": 2, "model_wall_time_sec": 0.1, '
                         '"non_model_wall_time_sec": 0.2, "output_count": 4, "output_per_sec": 10.0, '
-                        '"request_wall_time_sec": 0.4}',
+                        '"phase_wall_time_sec": {"legal_moves": 0.05}, "request_wall_time_sec": 0.4}',
                     ),
                 ),
             ),
