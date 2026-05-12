@@ -7,6 +7,8 @@ from collections import Counter
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict
 from pathlib import Path
+from statistics import mean
+from time import perf_counter
 from typing import Any
 
 from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
@@ -39,6 +41,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--parallel-games", type=int, default=1)
+    parser.add_argument("--progress-every-plies", type=int, default=0)
     # Computer-shogi self-play should not end as a short artificial draw; use
     # the WCSC-style 320-ply cap as the default and warn on shorter overrides.
     parser.add_argument("--max-plies", type=int, default=DEFAULT_MAX_PLIES)
@@ -51,11 +54,14 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--games must be positive")
     if args.parallel_games <= 0:
         parser.error("--parallel-games must be positive")
+    if args.progress_every_plies < 0:
+        parser.error("--progress-every-plies must be non-negative")
     _warn_short_max_plies(args.max_plies)
 
+    started_at = perf_counter()
     records = _play_games(args)
     save_shogi_game_records_jsonl(records, Path(args.out))
-    print(json.dumps(_records_summary(records), indent=2))
+    print(json.dumps(_records_summary(records, wall_time_sec=perf_counter() - started_at), indent=2))
 
 
 def _play_games(args: argparse.Namespace) -> tuple[ShogiGameRecord, ...]:
@@ -92,7 +98,8 @@ def _play_batched_checkpoint_mcts_games(args: argparse.Namespace) -> tuple[Shogi
         for _ in range(args.games)
     ]
     remaining = set(range(args.games))
-    for _ply in range(args.max_plies):
+    started_at = perf_counter()
+    for ply in range(args.max_plies):
         if not remaining:
             break
         black_indexes = [index for index in sorted(remaining) if board_is_black_turn(games[index].board)]
@@ -107,6 +114,8 @@ def _play_batched_checkpoint_mcts_games(args: argparse.Namespace) -> tuple[Shogi
                     info_lines = _performance_info_lines(result.performance) + batch_info_lines
                     if game_index in remaining and games[game_index].apply_move(result.move, info_lines):
                         remaining.remove(game_index)
+        if args.progress_every_plies and (ply + 1) % args.progress_every_plies == 0:
+            _print_progress(games, remaining=remaining, ply=ply + 1, elapsed_sec=perf_counter() - started_at)
     return tuple(game.to_record() for game in games)
 
 
@@ -255,15 +264,35 @@ def _batch_performance_info_lines(performance: object | None) -> tuple[str, ...]
     return ("info string intrep_batch_performance " + json.dumps(asdict(performance), sort_keys=True),)
 
 
+def _print_progress(
+    games: list[_ActiveBatchedGame],
+    *,
+    remaining: set[int],
+    ply: int,
+    elapsed_sec: float,
+) -> None:
+    completed = len(games) - len(remaining)
+    active_plies = [len(games[index].transitions) for index in remaining]
+    payload = {
+        "ply": ply,
+        "elapsed_sec": elapsed_sec,
+        "completed_games": completed,
+        "remaining_games": len(remaining),
+        "active_plies_avg": mean(active_plies) if active_plies else 0.0,
+        "active_plies_max": max(active_plies) if active_plies else 0,
+    }
+    print("progress " + json.dumps(payload, sort_keys=True), file=sys.stderr, flush=True)
+
+
 def _transition_reward(*, side: str, winner: str | None, done: bool) -> float:
     if not done or winner is None:
         return 0.0
     return 1.0 if side == winner else -1.0
 
 
-def _records_summary(records: tuple[ShogiGameRecord, ...]) -> dict[str, Any]:
+def _records_summary(records: tuple[ShogiGameRecord, ...], *, wall_time_sec: float | None = None) -> dict[str, Any]:
     end_reasons = Counter(record.end_reason for record in records)
-    return {
+    summary: dict[str, Any] = {
         "game_count": len(records),
         "end_reasons": dict(end_reasons),
         "average_plies": sum(len(record.transitions) for record in records) / len(records) if records else 0.0,
@@ -271,6 +300,67 @@ def _records_summary(records: tuple[ShogiGameRecord, ...]) -> dict[str, Any]:
         "white_wins": sum(1 for record in records if record.winner == "white"),
         "draws": sum(1 for record in records if record.winner is None),
     }
+    if wall_time_sec is not None:
+        summary["generation_wall_time_sec"] = wall_time_sec
+        total_plies = sum(len(record.transitions) for record in records)
+        summary["plies_per_sec"] = total_plies / wall_time_sec if wall_time_sec > 0.0 else 0.0
+    inference_performance = _performance_summary(records, prefix="info string intrep_performance ")
+    if inference_performance is not None:
+        summary["inference_performance"] = inference_performance
+    batch_performance = _performance_summary(records, prefix="info string intrep_batch_performance ")
+    if batch_performance is not None:
+        summary["batch_performance"] = batch_performance
+    return summary
+
+
+def _performance_summary(records: tuple[ShogiGameRecord, ...], *, prefix: str) -> dict[str, Any] | None:
+    samples = [
+        sample
+        for record in records
+        for transition in record.transitions
+        for sample in _transition_performance_samples(transition.decision_usi_info_lines, prefix=prefix)
+    ]
+    if not samples:
+        return None
+    summary: dict[str, Any] = {"sample_count": len(samples)}
+    for key in (
+        "request_wall_time_sec",
+        "model_call_count",
+        "model_wall_time_sec",
+        "non_model_wall_time_sec",
+        "output_count",
+        "output_per_sec",
+        "position_count",
+        "completed_simulations",
+    ):
+        values = [sample[key] for sample in samples if isinstance(sample.get(key), int | float)]
+        if values:
+            summary[f"{key}_avg"] = mean(values)
+            summary[f"{key}_max"] = max(values)
+    phase_totals: dict[str, float] = {}
+    for sample in samples:
+        phase_times = sample.get("phase_wall_time_sec")
+        if not isinstance(phase_times, dict):
+            continue
+        for name, elapsed in phase_times.items():
+            if isinstance(elapsed, int | float):
+                phase_totals[name] = phase_totals.get(name, 0.0) + float(elapsed)
+    if phase_totals:
+        summary["phase_wall_time_sec_total"] = dict(sorted(phase_totals.items()))
+        summary["phase_wall_time_sec_avg"] = {
+            name: elapsed / len(samples) for name, elapsed in sorted(phase_totals.items())
+        }
+    return summary
+
+
+def _transition_performance_samples(info_lines: tuple[str, ...], *, prefix: str) -> list[dict[str, Any]]:
+    samples: list[dict[str, Any]] = []
+    for line in info_lines:
+        if line.startswith(prefix):
+            payload = json.loads(line[len(prefix) :])
+            if isinstance(payload, dict):
+                samples.append(payload)
+    return samples
 
 
 def _warn_short_max_plies(max_plies: int) -> None:
