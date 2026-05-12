@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     add_player_arguments(parser, "white")
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--games", type=int, default=2)
-    parser.add_argument("--concurrent-games-per-process", "--parallel-games", type=int, default=1)
+    parser.add_argument("--concurrent-games-per-process", type=int, default=1)
     parser.add_argument("--generation-worker-processes", type=int, default=1)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--progress-every-plies", type=int, default=0)

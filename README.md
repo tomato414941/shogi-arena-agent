@@ -179,6 +179,10 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --out runs/shogi/self-play.jsonl
 ```
 
+Generation runtime settings such as `--concurrent-games-per-process` and
+`--generation-worker-processes` are documented in
+[`docs/shogi-generation.md`](docs/shogi-generation.md).
+
 YaneuraOu self-play also writes the same record format:
 
 ```sh
