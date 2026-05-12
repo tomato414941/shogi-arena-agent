@@ -189,7 +189,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "8",
                         "--games",
                         "4",
-                        "--parallel-games",
+                        "--concurrent-games-per-process",
                         "4",
                         "--max-plies",
                         "2",
@@ -203,7 +203,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
         self.assertEqual(len(records), 4)
         self.assertIn(4, batch_sizes)
-        self.assertEqual(records[0].black_actor.settings["parallel_games"], 4)
+        self.assertEqual(records[0].black_actor.settings["concurrent_games_per_process"], 4)
         self.assertTrue(
             any(line.startswith("info string intrep_batch_performance ") for line in records[0].transitions[0].decision_usi_info_lines)
         )
@@ -248,7 +248,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "1",
                         "--games",
                         "2",
-                        "--parallel-games",
+                        "--concurrent-games-per-process",
                         "2",
                         "--progress-every-plies",
                         "1",
@@ -292,7 +292,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "2",
                         "--games",
                         "2",
-                        "--parallel-games",
+                        "--concurrent-games-per-process",
                         "2",
                         "--board-backend",
                         "cshogi",
@@ -355,7 +355,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "deterministic_legal",
                         "--games",
                         "3",
-                        "--parallel-games",
+                        "--concurrent-games-per-process",
                         "1",
                         "--generation-worker-processes",
                         "2",

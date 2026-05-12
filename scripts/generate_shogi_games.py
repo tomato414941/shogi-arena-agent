@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     add_player_arguments(parser, "white")
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--games", type=int, default=2)
-    parser.add_argument("--parallel-games", type=int, default=1)
+    parser.add_argument("--concurrent-games-per-process", "--parallel-games", type=int, default=1)
     parser.add_argument("--generation-worker-processes", type=int, default=1)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--progress-every-plies", type=int, default=0)
@@ -42,8 +42,8 @@ def main(argv: list[str] | None = None) -> None:
     validate_player_arguments(parser, args, "white")
     if args.games <= 0:
         parser.error("--games must be positive")
-    if args.parallel_games <= 0:
-        parser.error("--parallel-games must be positive")
+    if args.concurrent_games_per_process <= 0:
+        parser.error("--concurrent-games-per-process must be positive")
     if args.generation_worker_processes <= 0:
         parser.error("--generation-worker-processes must be positive")
     if args.progress_every_plies < 0:
@@ -68,7 +68,7 @@ def _generation_config_from_args(args: argparse.Namespace) -> ShogiGenerationCon
         black=_player_config_from_args(args, "black"),
         white=_player_config_from_args(args, "white"),
         games=args.games,
-        parallel_games=args.parallel_games,
+        concurrent_games_per_process=args.concurrent_games_per_process,
         max_plies=args.max_plies,
         board_backend=args.board_backend,
         progress_every_plies=args.progress_every_plies,
@@ -157,8 +157,8 @@ def _shard_command(
         str(shard_out),
         "--games",
         str(shard_games),
-        "--parallel-games",
-        str(args.parallel_games),
+        "--concurrent-games-per-process",
+        str(args.concurrent_games_per_process),
         "--generation-worker-processes",
         "1",
         "--progress-every-plies",
@@ -222,7 +222,7 @@ def _aggregate_shard_summaries(
         "generation_wall_time_sec": wall_time_sec,
         "plies_per_sec": total_plies / wall_time_sec if wall_time_sec > 0.0 else 0.0,
         "generation_worker_processes": args.generation_worker_processes,
-        "parallel_games": args.parallel_games,
+        "concurrent_games_per_process": args.concurrent_games_per_process,
         "seed": args.seed,
         "shards": summaries,
     }

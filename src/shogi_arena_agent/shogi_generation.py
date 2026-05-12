@@ -53,7 +53,7 @@ class ShogiGenerationConfig:
     black: ShogiPlayerGenerationConfig
     white: ShogiPlayerGenerationConfig
     games: int
-    parallel_games: int
+    concurrent_games_per_process: int
     max_plies: int
     board_backend: str
     progress_every_plies: int = 0
@@ -64,7 +64,7 @@ def generate_shogi_games(
     *,
     checkpoint_evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator] = ShogiMoveChoiceCheckpointEvaluator,
 ) -> tuple[ShogiGameRecord, ...]:
-    if config.parallel_games > 1:
+    if config.concurrent_games_per_process > 1:
         return _play_batched_checkpoint_mcts_games(config, checkpoint_evaluator_cls=checkpoint_evaluator_cls)
     records: list[ShogiGameRecord] = []
     black_args = _player_args(config.black, prefix="black")
@@ -120,13 +120,13 @@ def _play_batched_checkpoint_mcts_games(
     black_actor = _checkpoint_actor(
         config.black,
         name="black",
-        parallel_games=config.parallel_games,
+        concurrent_games_per_process=config.concurrent_games_per_process,
         board_backend=config.board_backend,
     )
     white_actor = _checkpoint_actor(
         config.white,
         name="white",
-        parallel_games=config.parallel_games,
+        concurrent_games_per_process=config.concurrent_games_per_process,
         board_backend=config.board_backend,
     )
     black_selector = _checkpoint_selector(
@@ -151,8 +151,8 @@ def _play_batched_checkpoint_mcts_games(
         black_indexes = [index for index in sorted(remaining) if board_is_black_turn(games[index].board)]
         white_indexes = [index for index in sorted(remaining) if not board_is_black_turn(games[index].board)]
         for indexes, selector in ((black_indexes, black_selector), (white_indexes, white_selector)):
-            for offset in range(0, len(indexes), config.parallel_games):
-                batch_indexes = indexes[offset : offset + config.parallel_games]
+            for offset in range(0, len(indexes), config.concurrent_games_per_process):
+                batch_indexes = indexes[offset : offset + config.concurrent_games_per_process]
                 positions = [UsiPosition(position_command(games[index].moves)) for index in batch_indexes]
                 results = selector.select_moves(positions)
                 batch_info_lines = _batch_performance_info_lines(selector.last_batch_performance)
@@ -253,11 +253,11 @@ class _ActiveBatchedGame:
 def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> None:
     for player in (config.black, config.white):
         if player.kind != "checkpoint":
-            raise SystemExit("--parallel-games currently supports checkpoint-vs-checkpoint generation only")
+            raise SystemExit("--concurrent-games-per-process currently supports checkpoint-vs-checkpoint generation only")
         if player.checkpoint_policy != "mcts":
-            raise SystemExit("--parallel-games currently supports checkpoint MCTS players only")
+            raise SystemExit("--concurrent-games-per-process currently supports checkpoint MCTS players only")
         if player.checkpoint_move_time_limit_sec is not None:
-            raise SystemExit("--parallel-games does not support move time limits yet")
+            raise SystemExit("--concurrent-games-per-process does not support move time limits yet")
 
 
 def _checkpoint_selector(
@@ -287,7 +287,7 @@ def _checkpoint_actor(
     player: ShogiPlayerGenerationConfig,
     *,
     name: str,
-    parallel_games: int,
+    concurrent_games_per_process: int,
     board_backend: str,
 ) -> ShogiActorSpec:
     return ShogiActorSpec(
@@ -301,7 +301,7 @@ def _checkpoint_actor(
             "evaluation_batch_size": player.checkpoint_evaluation_batch_size,
             "move_time_limit_sec": player.checkpoint_move_time_limit_sec,
             "device": player.checkpoint_device,
-            "parallel_games": parallel_games,
+            "concurrent_games_per_process": concurrent_games_per_process,
             "board_backend": board_backend,
             "seed": player.seed,
         },
