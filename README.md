@@ -93,6 +93,7 @@ uv run --extra model python -m shogi_arena_agent \
   --checkpoint-policy mcts \
   --checkpoint-simulations 4096 \
   --checkpoint-evaluation-batch-size 64 \
+  --checkpoint-board-backend cshogi \
   --checkpoint-move-time-limit-sec 9.0
 ```
 

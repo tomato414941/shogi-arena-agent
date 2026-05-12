@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from shogi_arena_agent.__main__ import build_engine, parse_args
+from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.mcts_policy import MctsPolicy
 from shogi_arena_agent.usi import UsiEngine
 
@@ -16,6 +17,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(args.checkpoint_simulations, 16)
         self.assertEqual(args.checkpoint_evaluation_batch_size, 1)
         self.assertIsNone(args.checkpoint_move_time_limit_sec)
+        self.assertEqual(args.checkpoint_board_backend, "python-shogi")
         self.assertEqual(args.device, "cpu")
 
     def test_build_engine_defaults_to_usi_engine(self) -> None:
@@ -37,6 +39,8 @@ class MainTest(unittest.TestCase):
                 "8",
                 "--checkpoint-move-time-limit-sec",
                 "9.0",
+                "--checkpoint-board-backend",
+                "cshogi",
                 "--device",
                 "cuda",
             ]
@@ -50,6 +54,26 @@ class MainTest(unittest.TestCase):
         self.assertEqual(engine.policy.config.simulation_count, 32)
         self.assertEqual(engine.policy.config.evaluation_batch_size, 8)
         self.assertEqual(engine.policy.config.move_time_limit_sec, 9.0)
+        self.assertEqual(engine.policy.config.board_backend, "cshogi")
+        from_checkpoint.assert_called_once_with("checkpoint.pt", device="cuda")
+
+    def test_build_engine_passes_board_backend_to_direct_checkpoint_policy(self) -> None:
+        args = parse_args(
+            [
+                "--checkpoint",
+                "checkpoint.pt",
+                "--checkpoint-board-backend",
+                "cshogi",
+                "--device",
+                "cuda",
+            ]
+        )
+
+        with patch("shogi_arena_agent.model_policy.ShogiMoveChoiceCheckpointEvaluator.from_checkpoint") as from_checkpoint:
+            policy = build_engine(args).policy
+
+        self.assertIsInstance(policy, ShogiMoveChoiceCheckpointPolicy)
+        self.assertEqual(policy.board_backend, "cshogi")
         from_checkpoint.assert_called_once_with("checkpoint.pt", device="cuda")
 
 
