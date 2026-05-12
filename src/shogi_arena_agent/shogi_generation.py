@@ -45,6 +45,7 @@ class ShogiPlayerGenerationConfig:
     yaneuraou_read_timeout_seconds: float = 10.0
     yaneuraou_policy_target_multipv: int | None = None
     yaneuraou_policy_target_temperature_cp: float = 100.0
+    seed: int | None = None
 
 
 @dataclass(frozen=True)
@@ -278,7 +279,7 @@ def _checkpoint_selector(
             evaluation_batch_size=player.checkpoint_evaluation_batch_size,
             board_backend=board_backend,
         ),
-        move_selection=_move_selection_config(player.checkpoint_profile),
+        move_selection=_move_selection_config(player.checkpoint_profile, seed=player.seed),
     )
 
 
@@ -302,13 +303,14 @@ def _checkpoint_actor(
             "device": player.checkpoint_device,
             "parallel_games": parallel_games,
             "board_backend": board_backend,
+            "seed": player.seed,
         },
     )
 
 
-def _move_selection_config(profile: str):
+def _move_selection_config(profile: str, *, seed: int | None = None):
     if profile == "self-play":
-        return self_play_move_selection_config()
+        return self_play_move_selection_config(seed=seed)
     return evaluation_move_selection_config()
 
 
