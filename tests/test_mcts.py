@@ -6,8 +6,8 @@ import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
 from shogi_arena_agent.mcts_move_selector import (
-    BatchedMctsMoveSelector,
     MctsConfig,
+    MctsBatchExecutor,
     MctsMoveSelector,
     MctsSearchSession,
     PolicyValueEvaluator,
@@ -169,7 +169,7 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertIsNot(first_session, second_session)
 
     def test_self_play_selection_can_sample_different_root_moves(self) -> None:
-        selector = BatchedMctsMoveSelector(
+        selector = MctsBatchExecutor(
             config=MctsConfig(simulation_count=8, evaluation_batch_size=8),
             move_selection=self_play_move_selection_config(seed=1),
         )
@@ -178,9 +178,9 @@ class MctsMoveSelectorTest(unittest.TestCase):
 
         self.assertGreater(len({result.move for result in results}), 1)
 
-    def test_batched_selector_batches_across_positions(self) -> None:
+    def test_batch_executor_batches_across_positions(self) -> None:
         evaluator = BatchCountingEvaluator()
-        selector = BatchedMctsMoveSelector(evaluator, config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+        selector = MctsBatchExecutor(evaluator, config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
 
         results = selector.select_moves(
             [
@@ -193,8 +193,8 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertTrue(all(result.move != "resign" for result in results))
         self.assertIn(2, evaluator.batch_sizes)
 
-    def test_batched_selector_records_phase_timings(self) -> None:
-        selector = BatchedMctsMoveSelector(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+    def test_batch_executor_records_phase_timings(self) -> None:
+        selector = MctsBatchExecutor(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
 
         result = selector.select_moves([UsiPosition()])[0]
 
@@ -205,8 +205,8 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertGreater(phases["expand"], 0.0)
         self.assertGreater(phases["backup"], 0.0)
 
-    def test_batched_selector_records_batch_performance(self) -> None:
-        selector = BatchedMctsMoveSelector(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+    def test_batch_executor_records_batch_performance(self) -> None:
+        selector = MctsBatchExecutor(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
 
         selector.select_moves([UsiPosition(), UsiPosition()])
 
@@ -219,8 +219,8 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertGreater(performance.model_call_count, 0)
         self.assertGreater(performance.phase_wall_time_sec["legal_moves"], 0.0)
 
-    def test_batched_selector_supports_cshogi_backend(self) -> None:
-        selector = BatchedMctsMoveSelector(config=MctsConfig(simulation_count=4, evaluation_batch_size=8, board_backend="cshogi"))
+    def test_batch_executor_supports_cshogi_backend(self) -> None:
+        selector = MctsBatchExecutor(config=MctsConfig(simulation_count=4, evaluation_batch_size=8, board_backend="cshogi"))
 
         results = selector.select_moves([UsiPosition(), UsiPosition(command="position startpos moves 7g7f 3c3d")])
 

@@ -12,8 +12,8 @@ from typing import Any
 
 from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
 from shogi_arena_agent.mcts_move_selector import (
-    BatchedMctsMoveSelector,
     MctsConfig,
+    MctsBatchExecutor,
     evaluation_move_selection_config,
     self_play_move_selection_config,
 )
@@ -260,7 +260,9 @@ def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> N
         if player.mcts_move_time_limit_sec is not None:
             raise SystemExit("--concurrent-games-per-process does not support move time limits yet")
         if player.mcts_root_reuse:
-            raise SystemExit("--concurrent-games-per-process does not support MCTS root reuse yet")
+            raise SystemExit(
+                "--concurrent-games-per-process uses MctsBatchExecutor, which does not maintain per-game search sessions"
+            )
 
 
 def _checkpoint_selector(
@@ -268,14 +270,14 @@ def _checkpoint_selector(
     *,
     board_backend: str,
     evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator],
-) -> BatchedMctsMoveSelector:
+) -> MctsBatchExecutor:
     if player.checkpoint is None:
         raise SystemExit("checkpoint is required")
     evaluator = evaluator_cls.from_checkpoint(
         player.checkpoint,
         device=player.device,
     )
-    return BatchedMctsMoveSelector(
+    return MctsBatchExecutor(
         evaluator=evaluator,
         config=MctsConfig(
             simulation_count=player.mcts_simulations,

@@ -330,7 +330,12 @@ class MctsMoveSelector:
         return move
 
 
-class BatchedMctsMoveSelector:
+class MctsBatchExecutor:
+    """Run temporary MCTS searches for multiple positions in one NN evaluation flow.
+
+    This executor does not own per-game search sessions or persistent roots.
+    """
+
     def __init__(
         self,
         evaluator: PolicyValueEvaluator | None = None,
