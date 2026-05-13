@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 from shogi_arena_agent.shogi_game import load_shogi_game_records_jsonl
-from shogi_arena_agent.usi import UsiEngine
+from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position
 
 
 class GenerateShogiGamesScriptTest(unittest.TestCase):
@@ -159,6 +159,44 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                     )
 
         self.assertEqual(calls, ["black.pt", "white.pt"])
+
+    def test_checkpoint_generation_starts_policy_session_per_game(self) -> None:
+        module = _load_script_module()
+        factories: list[LegalSessionPolicyFactory] = []
+
+        def fake_load_policy(*_args: object, **_kwargs: object) -> "LegalSessionPolicyFactory":
+            factory = LegalSessionPolicyFactory()
+            factories.append(factory)
+            return factory
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with patch("shogi_arena_agent.player_cli._load_move_selector", side_effect=fake_load_policy):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    module.main(
+                        [
+                            "--black-kind",
+                            "checkpoint",
+                            "--black-checkpoint",
+                            "black.pt",
+                            "--white-kind",
+                            "checkpoint",
+                            "--white-checkpoint",
+                            "white.pt",
+                            "--games",
+                            "2",
+                            "--max-plies",
+                            "3",
+                            "--out",
+                            str(output_path),
+                        ]
+                    )
+
+        self.assertEqual(len(factories), 2)
+        black_factory, white_factory = factories
+        self.assertEqual([len(session.positions) for session in black_factory.sessions], [2, 2])
+        self.assertEqual([len(session.positions) for session in white_factory.sessions], [1, 1])
 
     def test_parallel_checkpoint_mcts_batches_games(self) -> None:
         module = _load_script_module()
@@ -476,6 +514,28 @@ def _load_script_module() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class LegalSessionPolicy:
+    def __init__(self) -> None:
+        self.positions: list[UsiPosition] = []
+
+    def select_move(self, position: UsiPosition) -> str:
+        self.positions.append(position)
+        return next(iter(sorted(move.usi() for move in board_from_position(position).legal_moves)))
+
+
+class LegalSessionPolicyFactory:
+    def __init__(self) -> None:
+        self.sessions: list[LegalSessionPolicy] = []
+
+    def new_session(self) -> LegalSessionPolicy:
+        session = LegalSessionPolicy()
+        self.sessions.append(session)
+        return session
+
+    def select_move(self, position: UsiPosition) -> str:
+        raise AssertionError("generation should select moves through per-game sessions")
 
 
 if __name__ == "__main__":
