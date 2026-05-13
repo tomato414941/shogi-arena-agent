@@ -9,6 +9,7 @@ from shogi_arena_agent.mcts_move_selector import (
     BatchedMctsMoveSelector,
     MctsConfig,
     MctsMoveSelector,
+    MctsSearchSession,
     PolicyValueEvaluator,
     self_play_move_selection_config,
 )
@@ -156,6 +157,16 @@ class MctsMoveSelectorTest(unittest.TestCase):
         selector.select_move(UsiPosition(command=f"position startpos moves {alternate_move}"))
 
         self.assertGreaterEqual(evaluator.call_count - first_call_count, 2)
+
+    def test_new_session_creates_independent_search_state(self) -> None:
+        selector = MctsMoveSelector(config=MctsConfig(simulation_count=1, root_reuse=True))
+
+        first_session = selector.new_session()
+        second_session = selector.new_session()
+
+        self.assertIsInstance(first_session, MctsSearchSession)
+        self.assertIsInstance(second_session, MctsSearchSession)
+        self.assertIsNot(first_session, second_session)
 
     def test_self_play_selection_can_sample_different_root_moves(self) -> None:
         selector = BatchedMctsMoveSelector(

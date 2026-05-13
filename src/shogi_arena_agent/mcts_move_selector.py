@@ -115,17 +115,17 @@ class UniformPolicyValueEvaluator:
         return evaluations
 
 
-class MctsMoveSelector:
+class MctsSearchSession:
     def __init__(
         self,
-        evaluator: PolicyValueEvaluator | None = None,
+        evaluator: PolicyValueEvaluator,
         *,
-        config: MctsConfig | None = None,
-        move_selection: MoveSelectionConfig | None = None,
+        config: MctsConfig,
+        move_selection: MoveSelectionConfig,
     ) -> None:
-        self.evaluator = evaluator or UniformPolicyValueEvaluator()
-        self.config = config or MctsConfig()
-        self.move_selection = move_selection or evaluation_move_selection_config()
+        self.evaluator = evaluator
+        self.config = config
+        self.move_selection = move_selection
         self._rng = random.Random(self.move_selection.seed)
         self.last_policy_targets: dict[str, float] | None = None
         self.last_performance: MctsMovePerformance | None = None
@@ -299,6 +299,35 @@ class MctsMoveSelector:
             actual_nn_leaf_eval_batch_size_max=max(self._leaf_eval_batch_sizes, default=0),
             actual_nn_leaf_eval_batch_count=len(self._leaf_eval_batch_sizes),
         )
+
+
+class MctsMoveSelector:
+    def __init__(
+        self,
+        evaluator: PolicyValueEvaluator | None = None,
+        *,
+        config: MctsConfig | None = None,
+        move_selection: MoveSelectionConfig | None = None,
+    ) -> None:
+        self.evaluator = evaluator or UniformPolicyValueEvaluator()
+        self.config = config or MctsConfig()
+        self.move_selection = move_selection or evaluation_move_selection_config()
+        self._default_session = self.new_session()
+        self.last_policy_targets: dict[str, float] | None = None
+        self.last_performance: MctsMovePerformance | None = None
+
+    def new_session(self) -> MctsSearchSession:
+        return MctsSearchSession(
+            self.evaluator,
+            config=self.config,
+            move_selection=self.move_selection,
+        )
+
+    def select_move(self, position: UsiPosition) -> str:
+        move = self._default_session.select_move(position)
+        self.last_policy_targets = self._default_session.last_policy_targets
+        self.last_performance = self._default_session.last_performance
+        return move
 
 
 class BatchedMctsMoveSelector:
