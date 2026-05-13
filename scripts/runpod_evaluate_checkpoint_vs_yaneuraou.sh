@@ -75,7 +75,7 @@ cd /root
 rm -rf shogi-arena-agent YaneuraOu
 GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch '$ARENA_REF' '$ARENA_REPOSITORY_URL' shogi-arena-agent
 cd /root/shogi-arena-agent
-/root/intrep/.venv/bin/python -m pip install -e . --no-deps
+/root/intrep/.venv/bin/python -m pip install -e .
 cd /root
 GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/yaneurao/YaneuraOu.git YaneuraOu
 cd /root/YaneuraOu/source
