@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
-from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy, evaluation_move_selection_config, self_play_move_selection_config
+from shogi_arena_agent.mcts_move_selector import (
+    MctsConfig,
+    MctsMoveSelector,
+    evaluation_move_selection_config,
+    self_play_move_selection_config,
+)
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.usi import BOARD_BACKENDS
 from shogi_arena_agent.multipv_policy import (
@@ -151,7 +156,7 @@ def _load_checkpoint_policy(
     if policy_kind == "direct":
         return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device, board_backend=board_backend)
     evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint, device=device)
-    return MctsPolicy(evaluator=evaluator, config=config, move_selection=_move_selection_config(profile))
+    return MctsMoveSelector(evaluator=evaluator, config=config, move_selection=_move_selection_config(profile))
 
 
 def _move_selection_config(profile: str):

@@ -22,7 +22,7 @@ def build_engine(args: argparse.Namespace) -> UsiEngine:
     if args.checkpoint is None:
         return UsiEngine()
 
-    from shogi_arena_agent.mcts_policy import MctsConfig, MctsPolicy
+    from shogi_arena_agent.mcts_move_selector import MctsConfig, MctsMoveSelector
     from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
 
     if args.checkpoint_policy == "direct":
@@ -33,7 +33,7 @@ def build_engine(args: argparse.Namespace) -> UsiEngine:
         )
     else:
         evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(args.checkpoint, device=args.device)
-        policy = MctsPolicy(
+        policy = MctsMoveSelector(
             evaluator=evaluator,
             config=MctsConfig(
                 simulation_count=args.checkpoint_simulations,

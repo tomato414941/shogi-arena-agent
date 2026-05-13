@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
-from shogi_arena_agent.mcts_policy import (
+from shogi_arena_agent.mcts_move_selector import (
     BatchedMctsMoveSelector,
     MctsConfig,
     evaluation_move_selection_config,

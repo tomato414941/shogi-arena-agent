@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from shogi_arena_agent.__main__ import build_engine, parse_args
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointPolicy
-from shogi_arena_agent.mcts_policy import MctsPolicy
+from shogi_arena_agent.mcts_move_selector import MctsMoveSelector
 from shogi_arena_agent.usi import UsiEngine
 
 
@@ -50,7 +50,7 @@ class MainTest(unittest.TestCase):
             from_checkpoint.return_value.evaluate_batch.return_value = [({"7g7f": 1.0}, 0.0)]
             engine = build_engine(args)
 
-        self.assertIsInstance(engine.policy, MctsPolicy)
+        self.assertIsInstance(engine.policy, MctsMoveSelector)
         self.assertEqual(engine.policy.config.simulation_count, 32)
         self.assertEqual(engine.policy.config.evaluation_batch_size, 8)
         self.assertEqual(engine.policy.config.move_time_limit_sec, 9.0)

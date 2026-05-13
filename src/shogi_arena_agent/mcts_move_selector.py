@@ -114,7 +114,7 @@ class UniformPolicyValueEvaluator:
         return evaluations
 
 
-class MctsPolicy:
+class MctsMoveSelector:
     def __init__(
         self,
         evaluator: PolicyValueEvaluator | None = None,

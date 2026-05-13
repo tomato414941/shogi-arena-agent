@@ -5,10 +5,10 @@ from collections.abc import Sequence
 import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
-from shogi_arena_agent.mcts_policy import (
+from shogi_arena_agent.mcts_move_selector import (
     BatchedMctsMoveSelector,
     MctsConfig,
-    MctsPolicy,
+    MctsMoveSelector,
     PolicyValueEvaluator,
     self_play_move_selection_config,
 )
@@ -73,9 +73,9 @@ class BatchCountingEvaluator:
         return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
 
 
-class MctsPolicyTest(unittest.TestCase):
+class MctsMoveSelectorTest(unittest.TestCase):
     def test_returns_legal_move(self) -> None:
-        move = MctsPolicy(config=MctsConfig(simulation_count=4)).select_move(UsiPosition())
+        move = MctsMoveSelector(config=MctsConfig(simulation_count=4)).select_move(UsiPosition())
 
         board = shogi.Board()
         self.assertIn(move, {legal_move.usi() for legal_move in board.legal_moves})
@@ -86,7 +86,7 @@ class MctsPolicyTest(unittest.TestCase):
         preferred_move = "7g7f"
         self.assertIn(preferred_move, legal_moves)
 
-        move = MctsPolicy(
+        move = MctsMoveSelector(
             PriorOnlyEvaluator(preferred_move),
             config=MctsConfig(simulation_count=8),
         ).select_move(position)
@@ -94,7 +94,7 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertEqual(move, preferred_move)
 
     def test_records_visit_count_policy_targets(self) -> None:
-        policy = MctsPolicy(config=MctsConfig(simulation_count=8))
+        policy = MctsMoveSelector(config=MctsConfig(simulation_count=8))
 
         policy.select_move(UsiPosition())
 
@@ -103,7 +103,7 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertIn("7g7f", policy.last_policy_targets)
 
     def test_records_move_performance(self) -> None:
-        policy = MctsPolicy(config=MctsConfig(simulation_count=4))
+        policy = MctsMoveSelector(config=MctsConfig(simulation_count=4))
 
         policy.select_move(UsiPosition())
 
@@ -117,7 +117,7 @@ class MctsPolicyTest(unittest.TestCase):
 
     def test_batches_leaf_evaluations(self) -> None:
         evaluator = BatchCountingEvaluator()
-        policy = MctsPolicy(evaluator, config=MctsConfig(simulation_count=8, evaluation_batch_size=4))
+        policy = MctsMoveSelector(evaluator, config=MctsConfig(simulation_count=8, evaluation_batch_size=4))
 
         policy.select_move(UsiPosition())
 
@@ -191,7 +191,7 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertIsNotNone(selector.last_batch_performance)
 
     def test_move_time_limit_can_stop_before_simulation_limit(self) -> None:
-        policy = MctsPolicy(config=MctsConfig(simulation_count=8, move_time_limit_sec=0.0))
+        policy = MctsMoveSelector(config=MctsConfig(simulation_count=8, move_time_limit_sec=0.0))
 
         policy.select_move(UsiPosition())
 
@@ -202,7 +202,7 @@ class MctsPolicyTest(unittest.TestCase):
     def test_value_guides_search_after_expansion(self) -> None:
         position = UsiPosition(command="position startpos moves 7g7f 3c3d")
 
-        move = MctsPolicy(
+        move = MctsMoveSelector(
             CaptureValueEvaluator(),
             config=MctsConfig(simulation_count=32, c_puct=1.5),
         ).select_move(position)
@@ -210,7 +210,7 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertEqual(move, "8h2b+")
 
     def test_final_selection_uses_root_player_value(self) -> None:
-        move = MctsPolicy(
+        move = MctsMoveSelector(
             FinalSelectionValueEvaluator(),
             config=MctsConfig(simulation_count=2, c_puct=1.5),
         ).select_move(UsiPosition())
@@ -219,7 +219,7 @@ class MctsPolicyTest(unittest.TestCase):
 
     def test_can_play_shogi_game(self) -> None:
         player = UsiEngine(
-            policy=MctsPolicy(
+            policy=MctsMoveSelector(
                 PriorOnlyEvaluator("7g7f"),
                 config=MctsConfig(simulation_count=4),
             )
