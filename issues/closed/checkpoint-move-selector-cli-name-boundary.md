@@ -1,11 +1,11 @@
-# Checkpoint Policy CLI Name Boundary
+# Checkpoint Move Selector CLI Name Boundary
 
-Status: open. Priority: low.
+Status: closed. Priority: low.
 
 ## Issue
 
-`--*-checkpoint-policy` currently selects the move-selection strategy used with
-a checkpoint, such as `direct` or `mcts`.
+The old `--*-checkpoint-policy` CLI option selected the move-selection strategy
+used with a checkpoint, such as `direct` or `mcts`.
 
 The name can be confused with other policy concepts:
 
@@ -23,7 +23,7 @@ MCTS, time-control MCTS, or beam search.
 ## Desired Direction
 
 Before adding more checkpoint-backed move-selection strategies, decide whether
-to keep `--*-checkpoint-policy` or introduce a clearer alias such as:
+to keep `--*-checkpoint-policy` or introduce a clearer replacement such as:
 
 - `--*-checkpoint-search`
 - `--*-checkpoint-move-strategy`
@@ -42,6 +42,20 @@ the CLI is widely used.
 
 This issue can close when checkpoint-backed move-selection naming is either:
 
-- documented as intentionally remaining `checkpoint-policy`, or
+- documented as intentionally remaining `move-selector`, or
 - renamed or aliased to a clearer term before additional strategies make the
   distinction harder to recover.
+
+## Resolution
+
+Closed by renaming the CLI without compatibility aliases:
+
+- `--*-checkpoint-policy` -> `--*-move-selector`
+- `--*-checkpoint-simulations` -> `--*-mcts-simulations`
+- `--*-checkpoint-evaluation-batch-size` -> `--*-mcts-evaluation-batch-size`
+- `--*-checkpoint-move-time-limit-sec` -> `--*-mcts-move-time-limit-sec`
+- `--*-checkpoint-root-reuse` -> `--*-mcts-root-reuse`
+- `--*-checkpoint-device` -> `--*-device`
+- `--*-checkpoint-board-backend` -> `--*-board-backend`
+
+Actor settings now record `move_selector` instead of `policy`.

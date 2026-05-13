@@ -160,12 +160,12 @@ trap cleanup_gpu_sampler EXIT
 /root/intrep/.venv/bin/python scripts/evaluate_shogi_players.py \\
   --player-kind checkpoint \\
   --player-checkpoint '$REMOTE_CHECKPOINT' \\
-  --player-checkpoint-policy mcts \\
-  --player-checkpoint-simulations '$MCTS_SIMULATIONS' \\
-  --player-checkpoint-evaluation-batch-size '$MCTS_BATCH_SIZE' \\
-  --player-checkpoint-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
-  --player-checkpoint-device cuda \\
-  --player-checkpoint-board-backend '$BOARD_BACKEND' \\
+  --player-move-selector mcts \\
+  --player-mcts-simulations '$MCTS_SIMULATIONS' \\
+  --player-mcts-evaluation-batch-size '$MCTS_BATCH_SIZE' \\
+  --player-mcts-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
+  --player-device cuda \\
+  --player-board-backend '$BOARD_BACKEND' \\
   --opponent-kind yaneuraou \\
   --opponent-yaneuraou-command /root/YaneuraOu/source/YaneuraOu-runpod \\
   --opponent-yaneuraou-go-command '$YANEURAOU_GO_COMMAND' \\

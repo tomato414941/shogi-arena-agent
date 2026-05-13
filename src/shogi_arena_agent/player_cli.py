@@ -24,7 +24,7 @@ from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
 PLAYER_KINDS = ("checkpoint", "yaneuraou", "deterministic_legal")
-CHECKPOINT_PROFILES = ("evaluation", "self-play")
+MOVE_SELECTION_PROFILES = ("evaluation", "self-play")
 
 
 @dataclass(frozen=True)
@@ -36,14 +36,14 @@ class BuiltPlayer:
 def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-kind", choices=PLAYER_KINDS, required=True)
     parser.add_argument(f"--{prefix}-checkpoint")
-    parser.add_argument(f"--{prefix}-checkpoint-profile", choices=CHECKPOINT_PROFILES, default="evaluation")
-    parser.add_argument(f"--{prefix}-checkpoint-policy", choices=("direct", "mcts"), default="mcts")
-    parser.add_argument(f"--{prefix}-checkpoint-simulations", type=int, default=16)
-    parser.add_argument(f"--{prefix}-checkpoint-evaluation-batch-size", type=int, default=1)
-    parser.add_argument(f"--{prefix}-checkpoint-move-time-limit-sec", type=float)
-    parser.add_argument(f"--{prefix}-checkpoint-root-reuse", action="store_true")
-    parser.add_argument(f"--{prefix}-checkpoint-device", default="cpu")
-    parser.add_argument(f"--{prefix}-checkpoint-board-backend", choices=BOARD_BACKENDS, default="python-shogi")
+    parser.add_argument(f"--{prefix}-move-selection-profile", choices=MOVE_SELECTION_PROFILES, default="evaluation")
+    parser.add_argument(f"--{prefix}-move-selector", choices=("direct", "mcts"), default="mcts")
+    parser.add_argument(f"--{prefix}-mcts-simulations", type=int, default=16)
+    parser.add_argument(f"--{prefix}-mcts-evaluation-batch-size", type=int, default=1)
+    parser.add_argument(f"--{prefix}-mcts-move-time-limit-sec", type=float)
+    parser.add_argument(f"--{prefix}-mcts-root-reuse", action="store_true")
+    parser.add_argument(f"--{prefix}-device", default="cpu")
+    parser.add_argument(f"--{prefix}-board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     parser.add_argument(f"--{prefix}-yaneuraou-command")
     parser.add_argument(f"--{prefix}-yaneuraou-go-command", default="go nodes 1")
     parser.add_argument(f"--{prefix}-yaneuraou-read-timeout-seconds", type=float, default=10.0)
@@ -63,14 +63,14 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint":
         checkpoint = _arg(args, prefix, "checkpoint")
-        profile = _arg(args, prefix, "checkpoint_profile")
-        policy_kind = _arg(args, prefix, "checkpoint_policy")
-        simulations = _arg(args, prefix, "checkpoint_simulations")
-        evaluation_batch_size = _arg(args, prefix, "checkpoint_evaluation_batch_size")
-        move_time_limit_sec = _arg(args, prefix, "checkpoint_move_time_limit_sec")
-        root_reuse = _arg(args, prefix, "checkpoint_root_reuse")
-        device = _arg(args, prefix, "checkpoint_device")
-        board_backend = _arg(args, prefix, "checkpoint_board_backend")
+        profile = _arg(args, prefix, "move_selection_profile")
+        move_selector = _arg(args, prefix, "move_selector")
+        simulations = _arg(args, prefix, "mcts_simulations")
+        evaluation_batch_size = _arg(args, prefix, "mcts_evaluation_batch_size")
+        move_time_limit_sec = _arg(args, prefix, "mcts_move_time_limit_sec")
+        root_reuse = _arg(args, prefix, "mcts_root_reuse")
+        device = _arg(args, prefix, "device")
+        board_backend = _arg(args, prefix, "board_backend")
         mcts_config = MctsConfig(
             simulation_count=simulations,
             evaluation_batch_size=evaluation_batch_size,
@@ -78,9 +78,9 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
             board_backend=board_backend,
             root_reuse=root_reuse,
         )
-        policy = _load_checkpoint_policy(
+        policy = _load_move_selector(
             checkpoint,
-            policy_kind=policy_kind,
+            move_selector=move_selector,
             config=mcts_config,
             profile=profile,
             device=device,
@@ -93,12 +93,12 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
                 name=name,
                 settings={
                     "checkpoint": checkpoint,
-                    "profile": profile,
-                    "policy": policy_kind,
-                    "simulations": mcts_config.simulation_count if policy_kind == "mcts" else None,
-                    "evaluation_batch_size": mcts_config.evaluation_batch_size if policy_kind == "mcts" else None,
-                    "move_time_limit_sec": mcts_config.move_time_limit_sec if policy_kind == "mcts" else None,
-                    "root_reuse": mcts_config.root_reuse if policy_kind == "mcts" else None,
+                    "move_selection_profile": profile,
+                    "move_selector": move_selector,
+                    "simulations": mcts_config.simulation_count if move_selector == "mcts" else None,
+                    "evaluation_batch_size": mcts_config.evaluation_batch_size if move_selector == "mcts" else None,
+                    "move_time_limit_sec": mcts_config.move_time_limit_sec if move_selector == "mcts" else None,
+                    "root_reuse": mcts_config.root_reuse if move_selector == "mcts" else None,
                     "device": device,
                     "board_backend": board_backend,
                 },
@@ -148,16 +148,16 @@ def player_context(args: argparse.Namespace, prefix: str, *, name: str) -> Itera
         yield BuiltPlayer(player=player, actor=actor)
 
 
-def _load_checkpoint_policy(
+def _load_move_selector(
     checkpoint: str,
     *,
-    policy_kind: str,
+    move_selector: str,
     config: MctsConfig,
     profile: str,
     device: str,
     board_backend: str,
 ) -> Any:
-    if policy_kind == "direct":
+    if move_selector == "direct":
         return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device, board_backend=board_backend)
     evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint, device=device)
     return MctsMoveSelector(evaluator=evaluator, config=config, move_selection=_move_selection_config(profile))

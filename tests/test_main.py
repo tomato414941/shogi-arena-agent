@@ -13,12 +13,12 @@ class MainTest(unittest.TestCase):
         args = parse_args([])
 
         self.assertIsNone(args.checkpoint)
-        self.assertEqual(args.checkpoint_policy, "direct")
-        self.assertEqual(args.checkpoint_simulations, 16)
-        self.assertEqual(args.checkpoint_evaluation_batch_size, 1)
-        self.assertIsNone(args.checkpoint_move_time_limit_sec)
-        self.assertFalse(args.checkpoint_root_reuse)
-        self.assertEqual(args.checkpoint_board_backend, "python-shogi")
+        self.assertEqual(args.move_selector, "direct")
+        self.assertEqual(args.mcts_simulations, 16)
+        self.assertEqual(args.mcts_evaluation_batch_size, 1)
+        self.assertIsNone(args.mcts_move_time_limit_sec)
+        self.assertFalse(args.mcts_root_reuse)
+        self.assertEqual(args.board_backend, "python-shogi")
         self.assertEqual(args.device, "cpu")
 
     def test_build_engine_defaults_to_usi_engine(self) -> None:
@@ -27,21 +27,21 @@ class MainTest(unittest.TestCase):
         self.assertIsInstance(engine, UsiEngine)
         self.assertEqual(engine.handle_line("go btime 0 wtime 0"), ["bestmove 1g1f"])
 
-    def test_build_engine_supports_mcts_checkpoint_policy(self) -> None:
+    def test_build_engine_supports_mcts_move_selector(self) -> None:
         args = parse_args(
             [
                 "--checkpoint",
                 "checkpoint.pt",
-                "--checkpoint-policy",
+                "--move-selector",
                 "mcts",
-                "--checkpoint-simulations",
+                "--mcts-simulations",
                 "32",
-                "--checkpoint-evaluation-batch-size",
+                "--mcts-evaluation-batch-size",
                 "8",
-                "--checkpoint-move-time-limit-sec",
+                "--mcts-move-time-limit-sec",
                 "9.0",
-                "--checkpoint-root-reuse",
-                "--checkpoint-board-backend",
+                "--mcts-root-reuse",
+                "--board-backend",
                 "cshogi",
                 "--device",
                 "cuda",
@@ -60,12 +60,12 @@ class MainTest(unittest.TestCase):
         self.assertEqual(engine.policy.config.board_backend, "cshogi")
         from_checkpoint.assert_called_once_with("checkpoint.pt", device="cuda")
 
-    def test_build_engine_passes_board_backend_to_direct_checkpoint_policy(self) -> None:
+    def test_build_engine_passes_board_backend_to_direct_move_selector(self) -> None:
         args = parse_args(
             [
                 "--checkpoint",
                 "checkpoint.pt",
-                "--checkpoint-board-backend",
+                "--board-backend",
                 "cshogi",
                 "--device",
                 "cuda",

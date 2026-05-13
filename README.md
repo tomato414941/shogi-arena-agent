@@ -90,11 +90,11 @@ Run the checkpoint as a USI engine:
 uv run --extra model python -m shogi_arena_agent \
   --checkpoint /path/to/checkpoint.pt \
   --device cuda \
-  --checkpoint-policy mcts \
-  --checkpoint-simulations 4096 \
-  --checkpoint-evaluation-batch-size 64 \
-  --checkpoint-board-backend cshogi \
-  --checkpoint-move-time-limit-sec 9.0
+  --move-selector mcts \
+  --mcts-simulations 4096 \
+  --mcts-evaluation-batch-size 64 \
+  --board-backend cshogi \
+  --mcts-move-time-limit-sec 9.0
 ```
 
 ```python
@@ -155,8 +155,8 @@ Checkpoint-backed games can be written as raw game log JSONL:
 uv run --extra model python scripts/generate_shogi_games.py \
   --black-kind checkpoint \
   --black-checkpoint /path/to/checkpoint.pt \
-  --black-checkpoint-policy mcts \
-  --black-checkpoint-simulations 16 \
+  --black-move-selector mcts \
+  --black-mcts-simulations 16 \
   --white-kind yaneuraou \
   --white-yaneuraou-command /path/to/YaneuraOu \
   --white-yaneuraou-go-command "go nodes 1" \
@@ -171,10 +171,10 @@ Checkpoint self-play uses the same record format:
 uv run --extra model python scripts/generate_shogi_games.py \
   --black-kind checkpoint \
   --black-checkpoint /path/to/checkpoint.pt \
-  --black-checkpoint-policy direct \
+  --black-move-selector direct \
   --white-kind checkpoint \
   --white-checkpoint /path/to/checkpoint.pt \
-  --white-checkpoint-policy direct \
+  --white-move-selector direct \
   --games 2 \
   --max-plies 320 \
   --out runs/shogi/self-play.jsonl

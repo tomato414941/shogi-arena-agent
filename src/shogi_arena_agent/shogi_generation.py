@@ -33,14 +33,14 @@ from shogi_arena_agent.usi import UsiPosition
 class ShogiPlayerGenerationConfig:
     kind: str
     checkpoint: str | None = None
-    checkpoint_profile: str = "evaluation"
-    checkpoint_policy: str = "mcts"
-    checkpoint_simulations: int = 16
-    checkpoint_evaluation_batch_size: int = 1
-    checkpoint_move_time_limit_sec: float | None = None
-    checkpoint_root_reuse: bool = False
-    checkpoint_device: str = "cpu"
-    checkpoint_board_backend: str = "python-shogi"
+    move_selection_profile: str = "evaluation"
+    move_selector: str = "mcts"
+    mcts_simulations: int = 16
+    mcts_evaluation_batch_size: int = 1
+    mcts_move_time_limit_sec: float | None = None
+    mcts_root_reuse: bool = False
+    device: str = "cpu"
+    board_backend: str = "python-shogi"
     yaneuraou_command: str | None = None
     yaneuraou_go_command: str = "go nodes 1"
     yaneuraou_read_timeout_seconds: float = 10.0
@@ -255,11 +255,11 @@ def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> N
     for player in (config.black, config.white):
         if player.kind != "checkpoint":
             raise SystemExit("--concurrent-games-per-process currently supports checkpoint-vs-checkpoint generation only")
-        if player.checkpoint_policy != "mcts":
+        if player.move_selector != "mcts":
             raise SystemExit("--concurrent-games-per-process currently supports checkpoint MCTS players only")
-        if player.checkpoint_move_time_limit_sec is not None:
+        if player.mcts_move_time_limit_sec is not None:
             raise SystemExit("--concurrent-games-per-process does not support move time limits yet")
-        if player.checkpoint_root_reuse:
+        if player.mcts_root_reuse:
             raise SystemExit("--concurrent-games-per-process does not support MCTS root reuse yet")
 
 
@@ -273,17 +273,17 @@ def _checkpoint_selector(
         raise SystemExit("checkpoint is required")
     evaluator = evaluator_cls.from_checkpoint(
         player.checkpoint,
-        device=player.checkpoint_device,
+        device=player.device,
     )
     return BatchedMctsMoveSelector(
         evaluator=evaluator,
         config=MctsConfig(
-            simulation_count=player.checkpoint_simulations,
-            evaluation_batch_size=player.checkpoint_evaluation_batch_size,
+            simulation_count=player.mcts_simulations,
+            evaluation_batch_size=player.mcts_evaluation_batch_size,
             board_backend=board_backend,
-            root_reuse=player.checkpoint_root_reuse,
+            root_reuse=player.mcts_root_reuse,
         ),
-        move_selection=_move_selection_config(player.checkpoint_profile, seed=player.seed),
+        move_selection=_move_selection_config(player.move_selection_profile, seed=player.seed),
     )
 
 
@@ -299,13 +299,13 @@ def _checkpoint_actor(
         name=name,
         settings={
             "checkpoint": player.checkpoint,
-            "profile": player.checkpoint_profile,
-            "policy": player.checkpoint_policy,
-            "simulations": player.checkpoint_simulations,
-            "evaluation_batch_size": player.checkpoint_evaluation_batch_size,
-            "move_time_limit_sec": player.checkpoint_move_time_limit_sec,
-            "root_reuse": player.checkpoint_root_reuse,
-            "device": player.checkpoint_device,
+            "move_selection_profile": player.move_selection_profile,
+            "move_selector": player.move_selector,
+            "simulations": player.mcts_simulations,
+            "evaluation_batch_size": player.mcts_evaluation_batch_size,
+            "move_time_limit_sec": player.mcts_move_time_limit_sec,
+            "root_reuse": player.mcts_root_reuse,
+            "device": player.device,
             "concurrent_games_per_process": concurrent_games_per_process,
             "board_backend": board_backend,
             "seed": player.seed,
@@ -436,14 +436,14 @@ def _player_args(player: ShogiPlayerGenerationConfig, *, prefix: str) -> object:
         **{
             f"{prefix}_kind": player.kind,
             f"{prefix}_checkpoint": player.checkpoint,
-            f"{prefix}_checkpoint_profile": player.checkpoint_profile,
-            f"{prefix}_checkpoint_policy": player.checkpoint_policy,
-            f"{prefix}_checkpoint_simulations": player.checkpoint_simulations,
-            f"{prefix}_checkpoint_evaluation_batch_size": player.checkpoint_evaluation_batch_size,
-            f"{prefix}_checkpoint_move_time_limit_sec": player.checkpoint_move_time_limit_sec,
-            f"{prefix}_checkpoint_root_reuse": player.checkpoint_root_reuse,
-            f"{prefix}_checkpoint_device": player.checkpoint_device,
-            f"{prefix}_checkpoint_board_backend": player.checkpoint_board_backend,
+            f"{prefix}_move_selection_profile": player.move_selection_profile,
+            f"{prefix}_move_selector": player.move_selector,
+            f"{prefix}_mcts_simulations": player.mcts_simulations,
+            f"{prefix}_mcts_evaluation_batch_size": player.mcts_evaluation_batch_size,
+            f"{prefix}_mcts_move_time_limit_sec": player.mcts_move_time_limit_sec,
+            f"{prefix}_mcts_root_reuse": player.mcts_root_reuse,
+            f"{prefix}_device": player.device,
+            f"{prefix}_board_backend": player.board_backend,
             f"{prefix}_yaneuraou_command": player.yaneuraou_command,
             f"{prefix}_yaneuraou_go_command": player.yaneuraou_go_command,
             f"{prefix}_yaneuraou_read_timeout_seconds": player.yaneuraou_read_timeout_seconds,

@@ -8,9 +8,9 @@ The `python -m shogi_arena_agent` USI entrypoint can now run checkpoint-backed
 actors with runtime search settings such as:
 
 ```text
---checkpoint-policy mcts
---checkpoint-simulations 4096
---checkpoint-evaluation-batch-size 64
+--move-selector mcts
+--mcts-simulations 4096
+--mcts-evaluation-batch-size 64
 --device cuda
 ```
 

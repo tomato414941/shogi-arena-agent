@@ -24,7 +24,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             stdout = io.StringIO()
 
             with patch(
-                "shogi_arena_agent.player_cli._load_checkpoint_policy",
+                "shogi_arena_agent.player_cli._load_move_selector",
                 return_value=DeterministicLegalMovePolicy(),
             ), contextlib.redirect_stdout(stdout):
                 module.main(
@@ -52,6 +52,10 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].black_actor.settings["checkpoint"], "black.pt")
         self.assertEqual(records[0].white_actor.settings["checkpoint"], "white.pt")
+        self.assertEqual(records[0].black_actor.settings["move_selector"], "mcts")
+        self.assertEqual(records[0].white_actor.settings["move_selector"], "mcts")
+        self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "evaluation")
+        self.assertEqual(records[0].white_actor.settings["move_selection_profile"], "evaluation")
         self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 1)
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 1)
         self.assertIsNone(records[0].black_actor.settings["move_time_limit_sec"])
@@ -67,7 +71,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             output_path = Path(temp_dir) / "games.jsonl"
 
             with patch(
-                "shogi_arena_agent.player_cli._load_checkpoint_policy",
+                "shogi_arena_agent.player_cli._load_move_selector",
                 return_value=DeterministicLegalMovePolicy(),
             ), contextlib.redirect_stdout(io.StringIO()):
                 module.main(
@@ -76,18 +80,18 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--black-checkpoint",
                         "black.pt",
-                        "--black-checkpoint-evaluation-batch-size",
+                        "--black-mcts-evaluation-batch-size",
                         "8",
-                        "--black-checkpoint-move-time-limit-sec",
+                        "--black-mcts-move-time-limit-sec",
                         "8.5",
-                        "--black-checkpoint-root-reuse",
+                        "--black-mcts-root-reuse",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
                         "white.pt",
-                        "--white-checkpoint-evaluation-batch-size",
+                        "--white-mcts-evaluation-batch-size",
                         "16",
-                        "--white-checkpoint-move-time-limit-sec",
+                        "--white-mcts-move-time-limit-sec",
                         "9.0",
                         "--games",
                         "1",
@@ -133,7 +137,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "games.jsonl"
 
-            with patch("shogi_arena_agent.player_cli._load_checkpoint_policy", side_effect=fake_load_policy):
+            with patch("shogi_arena_agent.player_cli._load_move_selector", side_effect=fake_load_policy):
                 with contextlib.redirect_stdout(io.StringIO()):
                     module.main(
                         [
@@ -180,17 +184,17 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--black-checkpoint",
                         "black.pt",
-                        "--black-checkpoint-simulations",
+                        "--black-mcts-simulations",
                         "2",
-                        "--black-checkpoint-evaluation-batch-size",
+                        "--black-mcts-evaluation-batch-size",
                         "8",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
                         "white.pt",
-                        "--white-checkpoint-simulations",
+                        "--white-mcts-simulations",
                         "2",
-                        "--white-checkpoint-evaluation-batch-size",
+                        "--white-mcts-evaluation-batch-size",
                         "8",
                         "--games",
                         "4",
@@ -230,7 +234,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--black-checkpoint",
                         "black.pt",
-                        "--black-checkpoint-root-reuse",
+                        "--black-mcts-root-reuse",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
@@ -272,13 +276,13 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--black-checkpoint",
                         "black.pt",
-                        "--black-checkpoint-simulations",
+                        "--black-mcts-simulations",
                         "1",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
                         "white.pt",
-                        "--white-checkpoint-simulations",
+                        "--white-mcts-simulations",
                         "1",
                         "--games",
                         "2",
@@ -316,13 +320,13 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--black-checkpoint",
                         "black.pt",
-                        "--black-checkpoint-simulations",
+                        "--black-mcts-simulations",
                         "2",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
                         "white.pt",
-                        "--white-checkpoint-simulations",
+                        "--white-mcts-simulations",
                         "2",
                         "--games",
                         "2",

@@ -37,18 +37,18 @@ shards into the requested `--out` JSONL and prints an aggregate summary.
 uv run --extra model python scripts/generate_shogi_games.py \
   --black-kind checkpoint \
   --black-checkpoint /path/to/checkpoint.pt \
-  --black-checkpoint-policy mcts \
-  --black-checkpoint-profile self-play \
-  --black-checkpoint-simulations 16 \
-  --black-checkpoint-evaluation-batch-size 32 \
-  --black-checkpoint-device cuda \
+  --black-move-selector mcts \
+  --black-move-selection-profile self-play \
+  --black-mcts-simulations 16 \
+  --black-mcts-evaluation-batch-size 32 \
+  --black-device cuda \
   --white-kind checkpoint \
   --white-checkpoint /path/to/checkpoint.pt \
-  --white-checkpoint-policy mcts \
-  --white-checkpoint-profile self-play \
-  --white-checkpoint-simulations 16 \
-  --white-checkpoint-evaluation-batch-size 32 \
-  --white-checkpoint-device cuda \
+  --white-move-selector mcts \
+  --white-move-selection-profile self-play \
+  --white-mcts-simulations 16 \
+  --white-mcts-evaluation-batch-size 32 \
+  --white-device cuda \
   --games 32 \
   --concurrent-games-per-process 8 \
   --generation-worker-processes 4 \
