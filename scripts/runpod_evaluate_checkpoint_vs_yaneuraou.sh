@@ -12,6 +12,7 @@ CHECKPOINT=${CHECKPOINT:?set CHECKPOINT to an intelligence-representation checkp
 OUTPUT_DIR=${OUTPUT_DIR:-runs/shogi/runpod-checkpoint-vs-yaneuraou}
 
 GPU_TYPE=${GPU_TYPE:-NVIDIA RTX 4000 Ada Generation}
+DATA_CENTER_IDS=${DATA_CENTER_IDS:-}
 MCTS_SIMULATIONS=${MCTS_SIMULATIONS:-4096}
 MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE:-64}
 MCTS_MOVE_TIME_LIMIT_SEC=${MCTS_MOVE_TIME_LIMIT_SEC:-9.0}
@@ -58,6 +59,7 @@ python3 "$RUNPOD_JOB" \
   --name shogi-arena-eval \
   --template-id runpod-torch-v280 \
   --gpu-type "$GPU_TYPE" \
+  ${DATA_CENTER_IDS:+--data-center-ids "$DATA_CENTER_IDS"} \
   --container-disk-size 30 \
   --volume-size 0 \
   --remote-dir /root/intrep \
