@@ -25,6 +25,30 @@ class ResignPolicy:
         return RESIGN_MOVE
 
 
+class SessionPolicy:
+    def __init__(self, move: str) -> None:
+        self.move = move
+        self.positions: list[UsiPosition] = []
+
+    def select_move(self, position: UsiPosition) -> str:
+        self.positions.append(position)
+        return self.move
+
+
+class SessionPolicyFactory:
+    def __init__(self, move: str) -> None:
+        self.move = move
+        self.sessions: list[SessionPolicy] = []
+
+    def new_session(self) -> SessionPolicy:
+        session = SessionPolicy(self.move)
+        self.sessions.append(session)
+        return session
+
+    def select_move(self, position: UsiPosition) -> str:
+        raise AssertionError("play_shogi_game should use a per-game session")
+
+
 class InfoLinePlayer:
     def position(self, command: str) -> None:
         pass
@@ -139,6 +163,21 @@ class ShogiGameTest(unittest.TestCase):
 
         self.assertEqual(loaded, (result,))
         self.assertNotIn("policy_targets", payload["transitions"][0])
+
+    def test_play_shogi_game_starts_policy_session_per_game(self) -> None:
+        black_policy = SessionPolicyFactory("7g7f")
+        white_policy = SessionPolicyFactory("3c3d")
+
+        play_shogi_game(
+            black=UsiEngine(policy=black_policy),
+            white=UsiEngine(policy=white_policy),
+            max_plies=2,
+        )
+
+        self.assertEqual(len(black_policy.sessions), 1)
+        self.assertEqual(len(white_policy.sessions), 1)
+        self.assertEqual(black_policy.sessions[-1].positions, [UsiPosition()])
+        self.assertEqual(white_policy.sessions[-1].positions, [UsiPosition(command="position startpos moves 7g7f")])
 
 
 if __name__ == "__main__":

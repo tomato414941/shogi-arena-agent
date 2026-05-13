@@ -20,6 +20,11 @@ class MovePolicy(Protocol):
         """Return a USI move string such as 7g7f."""
 
 
+class SessionMovePolicyFactory(Protocol):
+    def new_session(self) -> MovePolicy:
+        """Return a move policy state for one game."""
+
+
 def board_from_position(position: UsiPosition, *, backend: str = "python-shogi") -> shogi.Board | cshogi.Board:
     if backend not in BOARD_BACKENDS:
         raise ValueError(f"unsupported board backend: {backend}")
@@ -57,7 +62,18 @@ class UsiEngine:
         self.name = name
         self.author = author
         self.policy = policy or DeterministicLegalMovePolicy()
+        self._active_policy: MovePolicy | None = None
         self.position = UsiPosition()
+
+    @property
+    def active_policy(self) -> MovePolicy:
+        if self._active_policy is None:
+            self._active_policy = _new_policy_session(self.policy)
+        return self._active_policy
+
+    def new_game(self) -> None:
+        self.position = UsiPosition()
+        self._active_policy = _new_policy_session(self.policy)
 
     def handle_line(self, line: str) -> list[str]:
         line = line.strip()
@@ -73,9 +89,9 @@ class UsiEngine:
             self.position = UsiPosition(command=line)
             return []
         if line.startswith("go"):
-            return [f"bestmove {self.policy.select_move(self.position)}"]
+            return [f"bestmove {self.active_policy.select_move(self.position)}"]
         if line == "usinewgame":
-            self.position = UsiPosition()
+            self.new_game()
             return []
         if line == "quit":
             return []
@@ -90,3 +106,10 @@ def run_usi_loop(input_lines: Iterable[str], *, engine: UsiEngine | None = None)
             break
         output.extend(engine.handle_line(line))
     return output
+
+
+def _new_policy_session(policy: MovePolicy) -> MovePolicy:
+    new_session = getattr(policy, "new_session", None)
+    if callable(new_session):
+        return new_session()
+    return policy

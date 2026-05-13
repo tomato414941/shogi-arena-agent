@@ -99,8 +99,8 @@ class InProcessShogiPlayer:
         self.engine.handle_line(command)
 
     def go(self) -> UsiGoResult:
-        move = self.engine.policy.select_move(self.engine.position)
-        return UsiGoResult(bestmove=move, info_lines=_policy_info_lines(self.engine.policy))
+        move = self.engine.active_policy.select_move(self.engine.position)
+        return UsiGoResult(bestmove=move, info_lines=_policy_info_lines(self.engine.active_policy))
 
 
 def position_command(moves: tuple[str, ...]) -> str:
@@ -122,6 +122,10 @@ def play_shogi_game(
     initial_position_sfen = board.sfen()
     black_engine = black or UsiEngine(name="black")
     white_engine = white or UsiEngine(name="white")
+    if isinstance(black_engine, UsiEngine):
+        black_engine.new_game()
+    if isinstance(white_engine, UsiEngine):
+        white_engine.new_game()
     players = [
         _as_player(black_engine),
         _as_player(white_engine),

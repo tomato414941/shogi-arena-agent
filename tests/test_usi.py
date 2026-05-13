@@ -13,6 +13,29 @@ class FixedPolicy:
         return "2g2f"
 
 
+class CountingSessionPolicy:
+    def __init__(self, move: str) -> None:
+        self.move = move
+        self.positions: list[UsiPosition] = []
+
+    def select_move(self, position: UsiPosition) -> str:
+        self.positions.append(position)
+        return self.move
+
+
+class CountingSessionFactory:
+    def __init__(self) -> None:
+        self.sessions: list[CountingSessionPolicy] = []
+
+    def new_session(self) -> CountingSessionPolicy:
+        session = CountingSessionPolicy("2g2f")
+        self.sessions.append(session)
+        return session
+
+    def select_move(self, position: UsiPosition) -> str:
+        raise AssertionError("the engine should select moves through active sessions")
+
+
 class UsiEngineTest(unittest.TestCase):
     def test_usi_handshake(self) -> None:
         engine = UsiEngine(name="test-engine", author="tester")
@@ -36,6 +59,19 @@ class UsiEngineTest(unittest.TestCase):
 
         self.assertEqual(response, ["bestmove 2g2f"])
         self.assertEqual(policy.positions, [UsiPosition(command="position startpos moves 7g7f")])
+
+    def test_usinewgame_starts_new_policy_session(self) -> None:
+        factory = CountingSessionFactory()
+        engine = UsiEngine(policy=factory)
+
+        engine.handle_line("go btime 0 wtime 0")
+        engine.handle_line("usinewgame")
+        engine.handle_line("position startpos moves 7g7f")
+        engine.handle_line("go btime 0 wtime 0")
+
+        self.assertEqual(len(factory.sessions), 2)
+        self.assertEqual(factory.sessions[0].positions, [UsiPosition()])
+        self.assertEqual(factory.sessions[1].positions, [UsiPosition(command="position startpos moves 7g7f")])
 
     def test_default_policy_returns_legal_move_after_moves(self) -> None:
         position = UsiPosition(command="position startpos moves 7g7f")
