@@ -64,11 +64,13 @@ class FinalSelectionValueEvaluator:
 class BatchCountingEvaluator:
     def __init__(self) -> None:
         self.batch_sizes: list[int] = []
+        self.call_count = 0
 
     def evaluate_batch(
         self,
         requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
     ) -> list[tuple[dict[str, float], float]]:
+        self.call_count += 1
         self.batch_sizes.append(len(requests))
         return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
 
@@ -129,6 +131,31 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertEqual(policy.last_performance.actual_nn_leaf_eval_batch_size_max, 4)
         self.assertGreaterEqual(policy.last_performance.actual_nn_leaf_eval_batch_size_avg, 1.0)
         self.assertGreater(policy.last_performance.actual_nn_leaf_eval_batch_count, 0)
+
+    def test_root_reuse_can_continue_from_existing_child(self) -> None:
+        evaluator = BatchCountingEvaluator()
+        selector = MctsMoveSelector(evaluator, config=MctsConfig(simulation_count=1, root_reuse=True))
+
+        first_move = selector.select_move(UsiPosition())
+        first_call_count = evaluator.call_count
+        selector.select_move(UsiPosition(command=f"position startpos moves {first_move}"))
+
+        self.assertLess(evaluator.call_count - first_call_count, 2)
+
+    def test_root_reuse_falls_back_when_position_is_not_in_tree(self) -> None:
+        evaluator = BatchCountingEvaluator()
+        selector = MctsMoveSelector(evaluator, config=MctsConfig(simulation_count=1, root_reuse=True))
+
+        first_move = selector.select_move(UsiPosition())
+        alternate_move = next(
+            move
+            for move in sorted(legal_move.usi() for legal_move in shogi.Board().legal_moves)
+            if move != first_move
+        )
+        first_call_count = evaluator.call_count
+        selector.select_move(UsiPosition(command=f"position startpos moves {alternate_move}"))
+
+        self.assertGreaterEqual(evaluator.call_count - first_call_count, 2)
 
     def test_self_play_selection_can_sample_different_root_moves(self) -> None:
         selector = BatchedMctsMoveSelector(

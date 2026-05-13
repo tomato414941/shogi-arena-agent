@@ -38,6 +38,7 @@ class ShogiPlayerGenerationConfig:
     checkpoint_simulations: int = 16
     checkpoint_evaluation_batch_size: int = 1
     checkpoint_move_time_limit_sec: float | None = None
+    checkpoint_root_reuse: bool = False
     checkpoint_device: str = "cpu"
     checkpoint_board_backend: str = "python-shogi"
     yaneuraou_command: str | None = None
@@ -258,6 +259,8 @@ def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> N
             raise SystemExit("--concurrent-games-per-process currently supports checkpoint MCTS players only")
         if player.checkpoint_move_time_limit_sec is not None:
             raise SystemExit("--concurrent-games-per-process does not support move time limits yet")
+        if player.checkpoint_root_reuse:
+            raise SystemExit("--concurrent-games-per-process does not support MCTS root reuse yet")
 
 
 def _checkpoint_selector(
@@ -278,6 +281,7 @@ def _checkpoint_selector(
             simulation_count=player.checkpoint_simulations,
             evaluation_batch_size=player.checkpoint_evaluation_batch_size,
             board_backend=board_backend,
+            root_reuse=player.checkpoint_root_reuse,
         ),
         move_selection=_move_selection_config(player.checkpoint_profile, seed=player.seed),
     )
@@ -300,6 +304,7 @@ def _checkpoint_actor(
             "simulations": player.checkpoint_simulations,
             "evaluation_batch_size": player.checkpoint_evaluation_batch_size,
             "move_time_limit_sec": player.checkpoint_move_time_limit_sec,
+            "root_reuse": player.checkpoint_root_reuse,
             "device": player.checkpoint_device,
             "concurrent_games_per_process": concurrent_games_per_process,
             "board_backend": board_backend,
@@ -436,6 +441,7 @@ def _player_args(player: ShogiPlayerGenerationConfig, *, prefix: str) -> object:
             f"{prefix}_checkpoint_simulations": player.checkpoint_simulations,
             f"{prefix}_checkpoint_evaluation_batch_size": player.checkpoint_evaluation_batch_size,
             f"{prefix}_checkpoint_move_time_limit_sec": player.checkpoint_move_time_limit_sec,
+            f"{prefix}_checkpoint_root_reuse": player.checkpoint_root_reuse,
             f"{prefix}_checkpoint_device": player.checkpoint_device,
             f"{prefix}_checkpoint_board_backend": player.checkpoint_board_backend,
             f"{prefix}_yaneuraou_command": player.yaneuraou_command,

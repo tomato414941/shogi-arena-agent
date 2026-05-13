@@ -56,6 +56,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 1)
         self.assertIsNone(records[0].black_actor.settings["move_time_limit_sec"])
         self.assertIsNone(records[0].white_actor.settings["move_time_limit_sec"])
+        self.assertFalse(records[0].black_actor.settings["root_reuse"])
+        self.assertFalse(records[0].white_actor.settings["root_reuse"])
         self.assertEqual(summary["game_count"], 1)
 
     def test_records_checkpoint_mcts_settings_for_both_sides(self) -> None:
@@ -78,6 +80,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "8",
                         "--black-checkpoint-move-time-limit-sec",
                         "8.5",
+                        "--black-checkpoint-root-reuse",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
@@ -101,6 +104,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 16)
         self.assertEqual(records[0].black_actor.settings["move_time_limit_sec"], 8.5)
         self.assertEqual(records[0].white_actor.settings["move_time_limit_sec"], 9.0)
+        self.assertTrue(records[0].black_actor.settings["root_reuse"])
+        self.assertFalse(records[0].white_actor.settings["root_reuse"])
 
     def test_yaneuraou_requires_command(self) -> None:
         module = _load_script_module()
@@ -211,6 +216,35 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertIn("inference_performance", summary)
         self.assertIn("batch_performance", summary)
         self.assertIn("phase_wall_time_sec_total", summary["batch_performance"])
+
+    def test_parallel_checkpoint_mcts_rejects_root_reuse(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                module.main(
+                    [
+                        "--black-kind",
+                        "checkpoint",
+                        "--black-checkpoint",
+                        "black.pt",
+                        "--black-checkpoint-root-reuse",
+                        "--white-kind",
+                        "checkpoint",
+                        "--white-checkpoint",
+                        "white.pt",
+                        "--games",
+                        "2",
+                        "--concurrent-games-per-process",
+                        "2",
+                        "--max-plies",
+                        "1",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
 
     def test_parallel_checkpoint_mcts_can_print_progress(self) -> None:
         module = _load_script_module()

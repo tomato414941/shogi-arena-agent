@@ -26,6 +26,7 @@ class MctsConfig:
     evaluation_batch_size: int = 1
     move_time_limit_sec: float | None = None
     board_backend: str = "python-shogi"
+    root_reuse: bool = False
 
     def __post_init__(self) -> None:
         if self.simulation_count <= 0:
@@ -131,6 +132,8 @@ class MctsMoveSelector:
         self._model_call_count = 0
         self._model_wall_time_sec = 0.0
         self._leaf_eval_batch_sizes: list[int] = []
+        self._root: _Node | None = None
+        self._root_moves: tuple[str, ...] | None = None
 
     def select_move(self, position: UsiPosition) -> str:
         started_at = perf_counter()
@@ -138,14 +141,17 @@ class MctsMoveSelector:
         self._model_wall_time_sec = 0.0
         self._leaf_eval_batch_sizes = []
         board = board_from_position(position, backend=self.config.board_backend)
+        position_moves = _position_moves(position)
         legal_moves = legal_move_usis(board)
         if not legal_moves:
+            self._discard_root()
             self.last_policy_targets = None
             self.last_performance = self._performance_since(started_at, output_count=0)
             return RESIGN_MOVE
 
-        root = _Node(prior=1.0)
-        self._expand(root, board)
+        root = self._root_for_position(position_moves)
+        if not root.children:
+            self._expand(root, board)
         completed_simulations = 0
         deadline = None
         if self.config.move_time_limit_sec is not None:
@@ -161,7 +167,36 @@ class MctsMoveSelector:
 
         self.last_policy_targets = _visit_count_policy_targets(root)
         self.last_performance = self._performance_since(started_at, output_count=completed_simulations)
-        return _select_final_move(root, position, self.move_selection, self._rng)
+        selected_move = _select_final_move(root, position, self.move_selection, self._rng)
+        self._store_root(root, position_moves)
+        return selected_move
+
+    def _root_for_position(self, position_moves: tuple[str, ...]) -> "_Node":
+        if not self.config.root_reuse or self._root is None or self._root_moves is None:
+            return _Node(prior=1.0)
+        if len(position_moves) < len(self._root_moves) or position_moves[: len(self._root_moves)] != self._root_moves:
+            self._discard_root()
+            return _Node(prior=1.0)
+        root = self._root
+        for move in position_moves[len(self._root_moves) :]:
+            child = root.children.get(move)
+            if child is None:
+                self._discard_root()
+                return _Node(prior=1.0)
+            root = child
+        root.pending = False
+        return root
+
+    def _store_root(self, root: "_Node", position_moves: tuple[str, ...]) -> None:
+        if not self.config.root_reuse:
+            self._discard_root()
+            return
+        self._root = root
+        self._root_moves = position_moves
+
+    def _discard_root(self) -> None:
+        self._root = None
+        self._root_moves = None
 
     def _run_simulation_batch(self, root: _Node, board: ShogiBoard, *, max_count: int) -> int:
         pending: list[_PendingSimulation] = []
@@ -610,8 +645,12 @@ def _sample_visit_count_move(root: _Node, *, temperature: float, rng: random.Ran
 
 
 def _position_ply(position: UsiPosition) -> int:
+    return len(_position_moves(position))
+
+
+def _position_moves(position: UsiPosition) -> tuple[str, ...]:
     words = position.command.split()
-    return len(words[words.index("moves") + 1 :]) if "moves" in words else 0
+    return tuple(words[words.index("moves") + 1 :]) if "moves" in words else ()
 
 
 def _expand_node_with_evaluation(node: _Node, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:

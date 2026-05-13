@@ -17,6 +17,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(args.checkpoint_simulations, 16)
         self.assertEqual(args.checkpoint_evaluation_batch_size, 1)
         self.assertIsNone(args.checkpoint_move_time_limit_sec)
+        self.assertFalse(args.checkpoint_root_reuse)
         self.assertEqual(args.checkpoint_board_backend, "python-shogi")
         self.assertEqual(args.device, "cpu")
 
@@ -39,6 +40,7 @@ class MainTest(unittest.TestCase):
                 "8",
                 "--checkpoint-move-time-limit-sec",
                 "9.0",
+                "--checkpoint-root-reuse",
                 "--checkpoint-board-backend",
                 "cshogi",
                 "--device",
@@ -54,6 +56,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(engine.policy.config.simulation_count, 32)
         self.assertEqual(engine.policy.config.evaluation_batch_size, 8)
         self.assertEqual(engine.policy.config.move_time_limit_sec, 9.0)
+        self.assertTrue(engine.policy.config.root_reuse)
         self.assertEqual(engine.policy.config.board_backend, "cshogi")
         from_checkpoint.assert_called_once_with("checkpoint.pt", device="cuda")
 

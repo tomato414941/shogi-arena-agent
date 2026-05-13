@@ -84,6 +84,7 @@ def _player_config_from_args(args: argparse.Namespace, prefix: str) -> ShogiPlay
         checkpoint_simulations=getattr(args, f"{prefix}_checkpoint_simulations"),
         checkpoint_evaluation_batch_size=getattr(args, f"{prefix}_checkpoint_evaluation_batch_size"),
         checkpoint_move_time_limit_sec=getattr(args, f"{prefix}_checkpoint_move_time_limit_sec"),
+        checkpoint_root_reuse=getattr(args, f"{prefix}_checkpoint_root_reuse"),
         checkpoint_device=getattr(args, f"{prefix}_checkpoint_device"),
         checkpoint_board_backend=getattr(args, f"{prefix}_checkpoint_board_backend"),
         yaneuraou_command=getattr(args, f"{prefix}_yaneuraou_command"),
@@ -185,6 +186,7 @@ def _player_command_args(args: argparse.Namespace, prefix: str) -> list[str]:
         "checkpoint_simulations",
         "checkpoint_evaluation_batch_size",
         "checkpoint_move_time_limit_sec",
+        "checkpoint_root_reuse",
         "checkpoint_device",
         "checkpoint_board_backend",
         "yaneuraou_command",
@@ -195,6 +197,10 @@ def _player_command_args(args: argparse.Namespace, prefix: str) -> list[str]:
     ):
         value = getattr(args, f"{prefix}_{name}")
         if value is None:
+            continue
+        if isinstance(value, bool):
+            if value:
+                command.append(f"--{prefix}-{name.replace('_', '-')}")
             continue
         command.extend([f"--{prefix}-{name.replace('_', '-')}", str(value)])
     return command

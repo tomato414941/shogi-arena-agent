@@ -41,6 +41,7 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-checkpoint-simulations", type=int, default=16)
     parser.add_argument(f"--{prefix}-checkpoint-evaluation-batch-size", type=int, default=1)
     parser.add_argument(f"--{prefix}-checkpoint-move-time-limit-sec", type=float)
+    parser.add_argument(f"--{prefix}-checkpoint-root-reuse", action="store_true")
     parser.add_argument(f"--{prefix}-checkpoint-device", default="cpu")
     parser.add_argument(f"--{prefix}-checkpoint-board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     parser.add_argument(f"--{prefix}-yaneuraou-command")
@@ -67,6 +68,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
         simulations = _arg(args, prefix, "checkpoint_simulations")
         evaluation_batch_size = _arg(args, prefix, "checkpoint_evaluation_batch_size")
         move_time_limit_sec = _arg(args, prefix, "checkpoint_move_time_limit_sec")
+        root_reuse = _arg(args, prefix, "checkpoint_root_reuse")
         device = _arg(args, prefix, "checkpoint_device")
         board_backend = _arg(args, prefix, "checkpoint_board_backend")
         mcts_config = MctsConfig(
@@ -74,6 +76,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
             evaluation_batch_size=evaluation_batch_size,
             move_time_limit_sec=move_time_limit_sec,
             board_backend=board_backend,
+            root_reuse=root_reuse,
         )
         policy = _load_checkpoint_policy(
             checkpoint,
@@ -95,6 +98,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
                     "simulations": mcts_config.simulation_count if policy_kind == "mcts" else None,
                     "evaluation_batch_size": mcts_config.evaluation_batch_size if policy_kind == "mcts" else None,
                     "move_time_limit_sec": mcts_config.move_time_limit_sec if policy_kind == "mcts" else None,
+                    "root_reuse": mcts_config.root_reuse if policy_kind == "mcts" else None,
                     "device": device,
                     "board_backend": board_backend,
                 },
