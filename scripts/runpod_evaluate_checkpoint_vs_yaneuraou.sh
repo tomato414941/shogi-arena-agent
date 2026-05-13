@@ -11,10 +11,11 @@ RUNPOD_JOB=${RUNPOD_JOB:-"$RUNPOD_RUNNER_ROOT/scripts/run_job.py"}
 CHECKPOINT=${CHECKPOINT:?set CHECKPOINT to an intelligence-representation checkpoint path}
 OUTPUT_DIR=${OUTPUT_DIR:-runs/shogi/runpod-checkpoint-vs-yaneuraou}
 
-GPU_TYPE=${GPU_TYPE:-NVIDIA GeForce RTX 5090}
+GPU_TYPE=${GPU_TYPE:-NVIDIA RTX 4000 Ada Generation}
 MCTS_SIMULATIONS=${MCTS_SIMULATIONS:-4096}
 MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE:-64}
 MCTS_MOVE_TIME_LIMIT_SEC=${MCTS_MOVE_TIME_LIMIT_SEC:-9.0}
+BOARD_BACKEND=${BOARD_BACKEND:-cshogi}
 GAMES=${GAMES:-1}
 MAX_PLIES=${MAX_PLIES:-320}
 YANEURAOU_GO_COMMAND=${YANEURAOU_GO_COMMAND:-go nodes 1}
@@ -53,9 +54,10 @@ python3 "$RUNPOD_JOB" \
   --repo-root "$INTREP_ROOT" \
   --allow-existing-pods \
   --name shogi-arena-eval \
+  --template-id runpod-torch-v280 \
   --gpu-type "$GPU_TYPE" \
   --container-disk-size 30 \
-  --volume-size 20 \
+  --volume-size 0 \
   --remote-dir /root/intrep \
   --sync src \
   --sync tests \
@@ -88,6 +90,7 @@ cd /root/shogi-arena-agent
   --player-checkpoint-evaluation-batch-size '$MCTS_BATCH_SIZE' \\
   --player-checkpoint-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
   --player-checkpoint-device cuda \\
+  --player-checkpoint-board-backend '$BOARD_BACKEND' \\
   --opponent-kind yaneuraou \\
   --opponent-yaneuraou-command /root/YaneuraOu/source/YaneuraOu-runpod \\
   --opponent-yaneuraou-go-command '$YANEURAOU_GO_COMMAND' \\
