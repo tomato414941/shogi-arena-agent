@@ -110,7 +110,7 @@ def _performance_summary(results: list[ShogiGameRecord]) -> dict[str, Any] | Non
     output_counts = [sample["output_count"] for sample in samples]
     output_rates = [sample["output_per_sec"] for sample in samples]
     model_call_counts = [sample["model_call_count"] for sample in samples]
-    return {
+    summary = {
         "request_count": len(samples),
         "request_wall_time_sec_avg": mean(request_times),
         "request_wall_time_sec_p95": _percentile(request_times, 0.95),
@@ -121,6 +121,8 @@ def _performance_summary(results: list[ShogiGameRecord]) -> dict[str, Any] | Non
         "output_count_avg": mean(output_counts),
         "output_per_sec_avg": mean(output_rates),
     }
+    _add_actual_leaf_eval_batch_summary(summary, samples)
+    return summary
 
 
 def _transition_performance_samples(info_lines: tuple[str, ...]) -> list[dict[str, float]]:
@@ -131,6 +133,31 @@ def _transition_performance_samples(info_lines: tuple[str, ...]) -> list[dict[st
             payload = json.loads(line[len(prefix) :])
             samples.append({key: float(value) for key, value in payload.items() if isinstance(value, int | float)})
     return samples
+
+
+def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[dict[str, float]]) -> None:
+    avg_values = [
+        sample["actual_nn_leaf_eval_batch_size_avg"]
+        for sample in samples
+        if "actual_nn_leaf_eval_batch_size_avg" in sample
+    ]
+    max_values = [
+        sample["actual_nn_leaf_eval_batch_size_max"]
+        for sample in samples
+        if "actual_nn_leaf_eval_batch_size_max" in sample
+    ]
+    count_values = [
+        sample["actual_nn_leaf_eval_batch_count"]
+        for sample in samples
+        if "actual_nn_leaf_eval_batch_count" in sample
+    ]
+    if not avg_values or not max_values:
+        return
+    summary["actual_nn_leaf_eval_batch_size_avg"] = mean(avg_values)
+    summary["actual_nn_leaf_eval_batch_size_max"] = max(max_values)
+    if count_values:
+        summary["actual_nn_leaf_eval_batch_count_avg"] = mean(count_values)
+        summary["actual_nn_leaf_eval_batch_count_max"] = max(count_values)
 
 
 def _percentile(values: list[float], fraction: float) -> float:

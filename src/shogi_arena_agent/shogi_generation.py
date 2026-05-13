@@ -374,6 +374,7 @@ def _performance_summary(records: tuple[ShogiGameRecord, ...], *, prefix: str) -
         if values:
             summary[f"{key}_avg"] = mean(values)
             summary[f"{key}_max"] = max(values)
+    _add_actual_leaf_eval_batch_summary(summary, samples)
     phase_totals: dict[str, float] = {}
     for sample in samples:
         phase_times = sample.get("phase_wall_time_sec")
@@ -388,6 +389,31 @@ def _performance_summary(records: tuple[ShogiGameRecord, ...], *, prefix: str) -
             name: elapsed / len(samples) for name, elapsed in sorted(phase_totals.items())
         }
     return summary
+
+
+def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[dict[str, Any]]) -> None:
+    avg_values = [
+        sample["actual_nn_leaf_eval_batch_size_avg"]
+        for sample in samples
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_size_avg"), int | float)
+    ]
+    max_values = [
+        sample["actual_nn_leaf_eval_batch_size_max"]
+        for sample in samples
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_size_max"), int | float)
+    ]
+    count_values = [
+        sample["actual_nn_leaf_eval_batch_count"]
+        for sample in samples
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_count"), int | float)
+    ]
+    if not avg_values or not max_values:
+        return
+    summary["actual_nn_leaf_eval_batch_size_avg"] = mean(avg_values)
+    summary["actual_nn_leaf_eval_batch_size_max"] = max(max_values)
+    if count_values:
+        summary["actual_nn_leaf_eval_batch_count_avg"] = mean(count_values)
+        summary["actual_nn_leaf_eval_batch_count_max"] = max(count_values)
 
 
 def _transition_performance_samples(info_lines: tuple[str, ...], *, prefix: str) -> list[dict[str, Any]]:

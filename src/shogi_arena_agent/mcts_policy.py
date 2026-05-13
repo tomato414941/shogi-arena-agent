@@ -71,6 +71,9 @@ class MctsMovePerformance:
     non_model_wall_time_sec: float
     output_count: int
     output_per_sec: float
+    actual_nn_leaf_eval_batch_size_avg: float = 0.0
+    actual_nn_leaf_eval_batch_size_max: int = 0
+    actual_nn_leaf_eval_batch_count: int = 0
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
 
@@ -90,6 +93,9 @@ class MctsBatchPerformance:
     model_wall_time_sec: float
     non_model_wall_time_sec: float
     output_per_sec: float
+    actual_nn_leaf_eval_batch_size_avg: float = 0.0
+    actual_nn_leaf_eval_batch_size_max: int = 0
+    actual_nn_leaf_eval_batch_count: int = 0
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
 
@@ -124,11 +130,13 @@ class MctsPolicy:
         self.last_performance: MctsMovePerformance | None = None
         self._model_call_count = 0
         self._model_wall_time_sec = 0.0
+        self._leaf_eval_batch_sizes: list[int] = []
 
     def select_move(self, position: UsiPosition) -> str:
         started_at = perf_counter()
         self._model_call_count = 0
         self._model_wall_time_sec = 0.0
+        self._leaf_eval_batch_sizes = []
         board = board_from_position(position, backend=self.config.board_backend)
         legal_moves = legal_move_usis(board)
         if not legal_moves:
@@ -175,6 +183,7 @@ class MctsPolicy:
             pending.append(_PendingSimulation(path=simulation.path, board=simulation.board, legal_moves=legal_moves))
 
         if pending:
+            self._leaf_eval_batch_sizes.append(len(pending))
             started_at = perf_counter()
             evaluations = self.evaluator.evaluate_batch(
                 tuple((simulation.board, simulation.legal_moves) for simulation in pending)
@@ -241,6 +250,9 @@ class MctsPolicy:
         request_wall_time_sec = perf_counter() - started_at
         non_model_wall_time_sec = max(0.0, request_wall_time_sec - self._model_wall_time_sec)
         output_per_sec = output_count / request_wall_time_sec if request_wall_time_sec > 0 else 0.0
+        leaf_batch_size_avg = (
+            sum(self._leaf_eval_batch_sizes) / len(self._leaf_eval_batch_sizes) if self._leaf_eval_batch_sizes else 0.0
+        )
         return MctsMovePerformance(
             request_wall_time_sec=request_wall_time_sec,
             model_call_count=self._model_call_count,
@@ -248,6 +260,9 @@ class MctsPolicy:
             non_model_wall_time_sec=non_model_wall_time_sec,
             output_count=output_count,
             output_per_sec=output_per_sec,
+            actual_nn_leaf_eval_batch_size_avg=leaf_batch_size_avg,
+            actual_nn_leaf_eval_batch_size_max=max(self._leaf_eval_batch_sizes, default=0),
+            actual_nn_leaf_eval_batch_count=len(self._leaf_eval_batch_sizes),
         )
 
 

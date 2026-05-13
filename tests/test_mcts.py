@@ -126,6 +126,9 @@ class MctsPolicyTest(unittest.TestCase):
         self.assertEqual(policy.last_performance.output_count, 8)
         self.assertLess(policy.last_performance.model_call_count, 9)
         self.assertIn(4, evaluator.batch_sizes)
+        self.assertEqual(policy.last_performance.actual_nn_leaf_eval_batch_size_max, 4)
+        self.assertGreaterEqual(policy.last_performance.actual_nn_leaf_eval_batch_size_avg, 1.0)
+        self.assertGreater(policy.last_performance.actual_nn_leaf_eval_batch_count, 0)
 
     def test_self_play_selection_can_sample_different_root_moves(self) -> None:
         selector = BatchedMctsMoveSelector(

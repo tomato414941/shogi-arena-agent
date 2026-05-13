@@ -74,6 +74,8 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
                     decision_usi_info_lines=(
                         'info string intrep_performance {"model_call_count": 2, "model_wall_time_sec": 0.1, '
                         '"non_model_wall_time_sec": 0.2, "output_count": 4, "output_per_sec": 10.0, '
+                        '"actual_nn_leaf_eval_batch_size_avg": 3.0, "actual_nn_leaf_eval_batch_size_max": 4, '
+                        '"actual_nn_leaf_eval_batch_count": 2, '
                         '"phase_wall_time_sec": {"legal_moves": 0.05}, "request_wall_time_sec": 0.4}',
                     ),
                 ),
@@ -88,6 +90,8 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
         self.assertEqual(performance["request_count"], 1)
         self.assertEqual(performance["request_wall_time_sec_avg"], 0.4)
         self.assertEqual(performance["model_call_count_avg"], 2.0)
+        self.assertEqual(performance["actual_nn_leaf_eval_batch_size_avg"], 3.0)
+        self.assertEqual(performance["actual_nn_leaf_eval_batch_size_max"], 4.0)
 
     def test_external_players_are_reused_across_games(self) -> None:
         module = _load_script_module()
