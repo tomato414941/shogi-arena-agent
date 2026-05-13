@@ -49,6 +49,8 @@ REMOTE_OUTPUT="/root/intrep/$OUTPUT_DIR"
 REMOTE_SUMMARY="$REMOTE_OUTPUT/summary.json"
 REMOTE_GAMES="$REMOTE_OUTPUT/games.jsonl"
 REMOTE_CUDA="$REMOTE_OUTPUT/cuda.txt"
+REMOTE_GPU_SAMPLES="$REMOTE_OUTPUT/gpu_samples.csv"
+REMOTE_GPU_SUMMARY="$REMOTE_OUTPUT/gpu_summary.json"
 
 python3 "$RUNPOD_JOB" \
   --repo-root "$INTREP_ROOT" \
@@ -82,6 +84,77 @@ cd /root/YaneuraOu/source
 make -s -f Makefile -j\"\$(nproc)\" normal TARGET_CPU=AVX2 YANEURAOU_EDITION=YANEURAOU_ENGINE_MATERIAL COMPILER=g++ TARGET=YaneuraOu-runpod
 mkdir -p '$REMOTE_OUTPUT'
 cd /root/shogi-arena-agent
+/root/intrep/.venv/bin/python - <<'PY' > '$REMOTE_GPU_SAMPLES' &
+from __future__ import annotations
+
+import csv
+import subprocess
+import sys
+import time
+
+
+def cpu_totals() -> tuple[int, int]:
+    parts = open('/proc/stat', encoding='utf-8').readline().split()[1:]
+    values = [int(part) for part in parts]
+    idle = values[3] + values[4]
+    return sum(values), idle
+
+
+def gpu_sample() -> tuple[float, float, float, float]:
+    output = subprocess.check_output(
+        [
+            'nvidia-smi',
+            '--query-gpu=utilization.gpu,memory.used,memory.total,power.draw',
+            '--format=csv,noheader,nounits',
+        ],
+        text=True,
+    ).strip()
+    gpu_util, memory_used, memory_total, power_draw = [float(part.strip()) for part in output.split(',')]
+    return gpu_util, memory_used, memory_total, power_draw
+
+
+writer = csv.writer(sys.stdout)
+writer.writerow(
+    [
+        'timestamp_ms',
+        'cpu_util_percent',
+        'gpu_util_percent',
+        'memory_used_mib',
+        'memory_total_mib',
+        'power_draw_w',
+    ]
+)
+sys.stdout.flush()
+previous_total, previous_idle = cpu_totals()
+while True:
+    time.sleep(1)
+    total, idle = cpu_totals()
+    total_delta = total - previous_total
+    idle_delta = idle - previous_idle
+    previous_total, previous_idle = total, idle
+    cpu_util = 0.0 if total_delta <= 0 else 100.0 * (1.0 - idle_delta / total_delta)
+    try:
+        gpu_util, memory_used, memory_total, power_draw = gpu_sample()
+    except Exception:
+        gpu_util, memory_used, memory_total, power_draw = 0.0, 0.0, 0.0, 0.0
+    writer.writerow(
+        [
+            int(time.time() * 1000),
+            round(cpu_util, 3),
+            gpu_util,
+            memory_used,
+            memory_total,
+            power_draw,
+        ]
+    )
+    sys.stdout.flush()
+PY
+GPU_SAMPLER_PID=\$!
+cleanup_gpu_sampler() {
+  kill \"\$GPU_SAMPLER_PID\" >/dev/null 2>&1 || true
+  wait \"\$GPU_SAMPLER_PID\" >/dev/null 2>&1 || true
+}
+trap cleanup_gpu_sampler EXIT
 /root/intrep/.venv/bin/python scripts/evaluate_shogi_players.py \\
   --player-kind checkpoint \\
   --player-checkpoint '$REMOTE_CHECKPOINT' \\
@@ -99,6 +172,42 @@ cd /root/shogi-arena-agent
   --max-plies '$MAX_PLIES' \\
   --out '$REMOTE_GAMES' \\
   | tee '$REMOTE_SUMMARY'
+cleanup_gpu_sampler
+trap - EXIT
+/root/intrep/.venv/bin/python - <<'PY' > '$REMOTE_GPU_SUMMARY'
+from __future__ import annotations
+
+import csv
+import json
+from pathlib import Path
+
+path = Path('$REMOTE_GPU_SAMPLES')
+samples = []
+with path.open(encoding='utf-8') as file:
+    for row in csv.DictReader(file):
+        try:
+            samples.append(
+                {
+                    'cpu_util_percent': float(row['cpu_util_percent'].strip()),
+                    'gpu_util_percent': float(row['gpu_util_percent'].strip()),
+                    'memory_used_mib': float(row['memory_used_mib'].strip()),
+                    'memory_total_mib': float(row['memory_total_mib'].strip()),
+                    'power_draw_w': float(row['power_draw_w'].strip()),
+                }
+            )
+        except (KeyError, ValueError):
+            continue
+
+summary = {'sample_count': len(samples)}
+if samples:
+    for key in ('cpu_util_percent', 'gpu_util_percent', 'memory_used_mib', 'power_draw_w'):
+        values = [sample[key] for sample in samples]
+        summary[f'{key}_avg'] = sum(values) / len(values)
+        summary[f'{key}_max'] = max(values)
+    summary['memory_total_mib'] = max(sample['memory_total_mib'] for sample in samples)
+
+print(json.dumps(summary, indent=2, sort_keys=True))
+PY
 /root/intrep/.venv/bin/python - <<'PY' > '$REMOTE_CUDA'
 import torch
 print('torch', torch.__version__)
