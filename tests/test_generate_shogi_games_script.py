@@ -251,9 +251,11 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(records), 4)
         self.assertIn(4, batch_sizes)
         self.assertEqual(records[0].black_actor.settings["concurrent_games_per_process"], 4)
-        self.assertTrue(
-            any(line.startswith("info string intrep_batch_performance ") for line in records[0].transitions[0].decision_usi_info_lines)
-        )
+        self.assertEqual(records[0].transitions[0].decision_usi_info_lines, ())
+        self.assertIsNotNone(records[0].transitions[0].decision_telemetry)
+        assert records[0].transitions[0].decision_telemetry is not None
+        self.assertIsNotNone(records[0].transitions[0].decision_telemetry.move_performance)
+        self.assertIsNotNone(records[0].transitions[0].decision_telemetry.batch_performance)
         self.assertIn("generation_wall_time_sec", summary)
         self.assertIn("inference_performance", summary)
         self.assertIn("batch_performance", summary)

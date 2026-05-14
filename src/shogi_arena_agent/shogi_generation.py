@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from collections import Counter
+from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict, dataclass
 from statistics import mean
@@ -21,6 +22,7 @@ from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.player_cli import BuiltPlayer, build_static_player, player_context
 from shogi_arena_agent.shogi_game import (
     ShogiActorSpec,
+    ShogiDecisionTelemetry,
     ShogiGameRecord,
     ShogiTransitionRecord,
     play_shogi_game,
@@ -103,10 +105,20 @@ def records_summary(records: tuple[ShogiGameRecord, ...], *, wall_time_sec: floa
         summary["generation_wall_time_sec"] = wall_time_sec
         total_plies = sum(len(record.transitions) for record in records)
         summary["plies_per_sec"] = total_plies / wall_time_sec if wall_time_sec > 0.0 else 0.0
-    inference_performance = _performance_summary(records, prefix="info string intrep_performance ")
+    inference_performance = _performance_summary(
+        transition.decision_telemetry.move_performance
+        for record in records
+        for transition in record.transitions
+        if transition.decision_telemetry is not None and transition.decision_telemetry.move_performance is not None
+    )
     if inference_performance is not None:
         summary["inference_performance"] = inference_performance
-    batch_performance = _performance_summary(records, prefix="info string intrep_batch_performance ")
+    batch_performance = _performance_summary(
+        transition.decision_telemetry.batch_performance
+        for record in records
+        for transition in record.transitions
+        if transition.decision_telemetry is not None and transition.decision_telemetry.batch_performance is not None
+    )
     if batch_performance is not None:
         summary["batch_performance"] = batch_performance
     return summary
@@ -156,10 +168,13 @@ def _play_batched_checkpoint_mcts_games(
                 batch_indexes = indexes[offset : offset + config.concurrent_games_per_process]
                 positions = [UsiPosition(position_command(games[index].moves)) for index in batch_indexes]
                 results = selector.select_moves(positions)
-                batch_info_lines = _batch_performance_info_lines(selector.last_batch_performance)
+                batch_performance = _performance_payload(selector.last_batch_performance)
                 for game_index, result in zip(batch_indexes, results, strict=True):
-                    info_lines = _performance_info_lines(result.performance) + batch_info_lines
-                    if game_index in remaining and games[game_index].apply_move(result.move, info_lines):
+                    telemetry = ShogiDecisionTelemetry(
+                        move_performance=_performance_payload(result.performance),
+                        batch_performance=batch_performance,
+                    )
+                    if game_index in remaining and games[game_index].apply_move(result.move, telemetry):
                         remaining.remove(game_index)
         if config.progress_every_plies and (ply + 1) % config.progress_every_plies == 0:
             _print_progress(games, remaining=remaining, ply=ply + 1, elapsed_sec=perf_counter() - started_at)
@@ -192,7 +207,7 @@ class _ActiveBatchedGame:
     def moves(self) -> tuple[str, ...]:
         return tuple(transition.action_usi for transition in self.transitions)
 
-    def apply_move(self, move: str, info_lines: tuple[str, ...]) -> bool:
+    def apply_move(self, move: str, telemetry: ShogiDecisionTelemetry | None) -> bool:
         side = board_turn_name(self.board)
         legal_moves = legal_move_usis(self.board)
         position_sfen = self.board.sfen()
@@ -214,7 +229,7 @@ class _ActiveBatchedGame:
                 next_position_sfen=self.board.sfen(),
                 reward=_transition_reward(side=side, winner=self.winner, done=done),
                 done=done,
-                decision_usi_info_lines=info_lines,
+                decision_telemetry=telemetry,
             )
         )
         if done:
@@ -246,6 +261,7 @@ class _ActiveBatchedGame:
                 reward=_transition_reward(side=transition.side, winner=self.winner, done=True),
                 done=True,
                 decision_usi_info_lines=transition.decision_usi_info_lines,
+                decision_telemetry=transition.decision_telemetry,
             )
             for transition in self.transitions
         ]
@@ -321,14 +337,10 @@ def _move_selection_config(profile: str, *, seed: int | None = None):
     return evaluation_move_selection_config()
 
 
-def _performance_info_lines(performance: object) -> tuple[str, ...]:
-    return ("info string intrep_performance " + json.dumps(asdict(performance), sort_keys=True),)
-
-
-def _batch_performance_info_lines(performance: object | None) -> tuple[str, ...]:
+def _performance_payload(performance: object | None) -> dict[str, object] | None:
     if performance is None:
-        return ()
-    return ("info string intrep_batch_performance " + json.dumps(asdict(performance), sort_keys=True),)
+        return None
+    return asdict(performance)
 
 
 def _print_progress(
@@ -357,16 +369,11 @@ def _transition_reward(*, side: str, winner: str | None, done: bool) -> float:
     return 1.0 if side == winner else -1.0
 
 
-def _performance_summary(records: tuple[ShogiGameRecord, ...], *, prefix: str) -> dict[str, Any] | None:
-    samples = [
-        sample
-        for record in records
-        for transition in record.transitions
-        for sample in _transition_performance_samples(transition.decision_usi_info_lines, prefix=prefix)
-    ]
-    if not samples:
+def _performance_summary(samples: Iterable[dict[str, object] | None]) -> dict[str, Any] | None:
+    sample_list = [sample for sample in samples if sample is not None]
+    if not sample_list:
         return None
-    summary: dict[str, Any] = {"sample_count": len(samples)}
+    summary: dict[str, Any] = {"sample_count": len(sample_list)}
     for key in (
         "request_wall_time_sec",
         "model_call_count",
@@ -377,13 +384,13 @@ def _performance_summary(records: tuple[ShogiGameRecord, ...], *, prefix: str) -
         "position_count",
         "completed_simulations",
     ):
-        values = [sample[key] for sample in samples if isinstance(sample.get(key), int | float)]
+        values = [sample[key] for sample in sample_list if isinstance(sample.get(key), int | float)]
         if values:
             summary[f"{key}_avg"] = mean(values)
             summary[f"{key}_max"] = max(values)
-    _add_actual_leaf_eval_batch_summary(summary, samples)
+    _add_actual_leaf_eval_batch_summary(summary, sample_list)
     phase_totals: dict[str, float] = {}
-    for sample in samples:
+    for sample in sample_list:
         phase_times = sample.get("phase_wall_time_sec")
         if not isinstance(phase_times, dict):
             continue
@@ -393,7 +400,7 @@ def _performance_summary(records: tuple[ShogiGameRecord, ...], *, prefix: str) -
     if phase_totals:
         summary["phase_wall_time_sec_total"] = dict(sorted(phase_totals.items()))
         summary["phase_wall_time_sec_avg"] = {
-            name: elapsed / len(samples) for name, elapsed in sorted(phase_totals.items())
+            name: elapsed / len(sample_list) for name, elapsed in sorted(phase_totals.items())
         }
     return summary
 
@@ -439,16 +446,6 @@ def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[d
         summary["actual_nn_leaf_eval_batch_size_fill_ratio_avg"] = mean(fill_ratio_values)
     if histogram:
         summary["actual_nn_leaf_eval_batch_size_histogram"] = dict(sorted(histogram.items()))
-
-
-def _transition_performance_samples(info_lines: tuple[str, ...], *, prefix: str) -> list[dict[str, Any]]:
-    samples: list[dict[str, Any]] = []
-    for line in info_lines:
-        if line.startswith(prefix):
-            payload = json.loads(line[len(prefix) :])
-            if isinstance(payload, dict):
-                samples.append(payload)
-    return samples
 
 
 def _player_args(player: ShogiPlayerGenerationConfig, *, prefix: str) -> object:

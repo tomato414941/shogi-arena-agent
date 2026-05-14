@@ -15,6 +15,7 @@ class UsiGoResult:
     ponder: str | None = None
     info_lines: tuple[str, ...] = ()
     policy_targets: dict[str, float] | None = None
+    decision_telemetry: object | None = None
 
 
 class UsiProcess:

@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from shogi_arena_agent.shogi_game import (
     ShogiActorSpec,
+    ShogiDecisionTelemetry,
     ShogiGameRecord,
     ShogiTransitionRecord,
     load_shogi_game_records_jsonl,
@@ -71,14 +72,21 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
                     next_position_sfen="after",
                     reward=0.0,
                     done=False,
-                    decision_usi_info_lines=(
-                        'info string intrep_performance {"model_call_count": 2, "model_wall_time_sec": 0.1, '
-                        '"non_model_wall_time_sec": 0.2, "output_count": 4, "output_per_sec": 10.0, '
-                        '"actual_nn_leaf_eval_batch_size_avg": 3.0, "actual_nn_leaf_eval_batch_size_max": 4, '
-                        '"actual_nn_leaf_eval_batch_count": 2, '
-                        '"actual_nn_leaf_eval_batch_size_fill_ratio_avg": 0.75, '
-                        '"actual_nn_leaf_eval_batch_size_histogram": {"2": 1, "4": 1}, '
-                        '"phase_wall_time_sec": {"legal_moves": 0.05}, "request_wall_time_sec": 0.4}',
+                    decision_telemetry=ShogiDecisionTelemetry(
+                        move_performance={
+                            "model_call_count": 2,
+                            "model_wall_time_sec": 0.1,
+                            "non_model_wall_time_sec": 0.2,
+                            "output_count": 4,
+                            "output_per_sec": 10.0,
+                            "actual_nn_leaf_eval_batch_size_avg": 3.0,
+                            "actual_nn_leaf_eval_batch_size_max": 4,
+                            "actual_nn_leaf_eval_batch_count": 2,
+                            "actual_nn_leaf_eval_batch_size_fill_ratio_avg": 0.75,
+                            "actual_nn_leaf_eval_batch_size_histogram": {"2": 1, "4": 1},
+                            "phase_wall_time_sec": {"legal_moves": 0.05},
+                            "request_wall_time_sec": 0.4,
+                        },
                     ),
                 ),
             ),

@@ -19,6 +19,12 @@ class ShogiActorSpec:
 
 
 @dataclass(frozen=True)
+class ShogiDecisionTelemetry:
+    move_performance: dict[str, object] | None = None
+    batch_performance: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
 class ShogiTransitionRecord:
     ply: int
     side: str
@@ -29,6 +35,7 @@ class ShogiTransitionRecord:
     reward: float
     done: bool
     decision_usi_info_lines: tuple[str, ...] = ()
+    decision_telemetry: ShogiDecisionTelemetry | None = None
 
 
 @dataclass(frozen=True)
@@ -100,7 +107,7 @@ class InProcessShogiPlayer:
 
     def go(self) -> UsiGoResult:
         move = self.engine.active_policy.select_move(self.engine.position)
-        return UsiGoResult(bestmove=move, info_lines=_policy_info_lines(self.engine.active_policy))
+        return UsiGoResult(bestmove=move, decision_telemetry=_policy_decision_telemetry(self.engine.active_policy))
 
 
 def position_command(moves: tuple[str, ...]) -> str:
@@ -180,6 +187,7 @@ def play_shogi_game(
                 reward=_transition_reward(side=side, winner=winner, done=done),
                 done=done,
                 decision_usi_info_lines=go_result.info_lines,
+                decision_telemetry=_coerce_decision_telemetry(go_result.decision_telemetry),
             )
         )
         if done:
@@ -207,11 +215,11 @@ def _as_player(player: ShogiPlayer | UsiEngine) -> ShogiPlayer:
     return player
 
 
-def _policy_info_lines(policy: object) -> tuple[str, ...]:
+def _policy_decision_telemetry(policy: object) -> ShogiDecisionTelemetry | None:
     performance = getattr(policy, "last_performance", None)
     if performance is None or not is_dataclass(performance):
-        return ()
-    return ("info string intrep_performance " + json.dumps(asdict(performance), sort_keys=True),)
+        return None
+    return ShogiDecisionTelemetry(move_performance=_dataclass_payload(performance))
 
 
 def _default_actor_spec(player: ShogiPlayer | UsiEngine, *, side: str) -> ShogiActorSpec:
@@ -229,7 +237,7 @@ def _actor_spec_to_json(spec: ShogiActorSpec) -> dict[str, object]:
 
 
 def _transition_record_to_json(record: ShogiTransitionRecord) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "ply": record.ply,
         "side": record.side,
         "position_sfen": record.position_sfen,
@@ -240,9 +248,16 @@ def _transition_record_to_json(record: ShogiTransitionRecord) -> dict[str, objec
         "done": record.done,
         "decision_usi_info_lines": list(record.decision_usi_info_lines),
     }
+    if record.decision_telemetry is not None:
+        payload["decision_telemetry"] = _decision_telemetry_to_json(record.decision_telemetry)
+    return payload
 
 
 def _transition_record_from_json(data: dict[str, object]) -> ShogiTransitionRecord:
+    info_lines = tuple(str(line) for line in cast(list[object], data.get("decision_usi_info_lines", [])))
+    telemetry = _decision_telemetry_from_json(data.get("decision_telemetry"))
+    if telemetry is None:
+        info_lines, telemetry = _migrate_legacy_performance_info_lines(info_lines)
     return ShogiTransitionRecord(
         ply=int(data["ply"]),
         side=str(data["side"]),
@@ -252,7 +267,8 @@ def _transition_record_from_json(data: dict[str, object]) -> ShogiTransitionReco
         next_position_sfen=str(data["next_position_sfen"]),
         reward=float(data["reward"]),
         done=bool(data["done"]),
-        decision_usi_info_lines=tuple(str(line) for line in cast(list[object], data.get("decision_usi_info_lines", []))),
+        decision_usi_info_lines=info_lines,
+        decision_telemetry=telemetry,
     )
 
 
@@ -275,8 +291,75 @@ def _finalize_transitions(
         reward=_transition_reward(side=last.side, winner=winner, done=True),
         done=True,
         decision_usi_info_lines=last.decision_usi_info_lines,
+        decision_telemetry=last.decision_telemetry,
     )
     return finalized
+
+
+def _coerce_decision_telemetry(value: object | None) -> ShogiDecisionTelemetry | None:
+    if value is None:
+        return None
+    if isinstance(value, ShogiDecisionTelemetry):
+        return value
+    if isinstance(value, dict):
+        return _decision_telemetry_from_json(value)
+    raise TypeError(f"unsupported decision telemetry: {type(value).__name__}")
+
+
+def _decision_telemetry_to_json(telemetry: ShogiDecisionTelemetry) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    if telemetry.move_performance is not None:
+        payload["move_performance"] = telemetry.move_performance
+    if telemetry.batch_performance is not None:
+        payload["batch_performance"] = telemetry.batch_performance
+    return payload
+
+
+def _decision_telemetry_from_json(value: object) -> ShogiDecisionTelemetry | None:
+    if value is None:
+        return None
+    data = _object_dict(value)
+    return ShogiDecisionTelemetry(
+        move_performance=_optional_object_dict(data.get("move_performance")),
+        batch_performance=_optional_object_dict(data.get("batch_performance")),
+    )
+
+
+def _migrate_legacy_performance_info_lines(
+    info_lines: tuple[str, ...],
+) -> tuple[tuple[str, ...], ShogiDecisionTelemetry | None]:
+    user_info_lines: list[str] = []
+    move_performance: dict[str, object] | None = None
+    batch_performance: dict[str, object] | None = None
+    for line in info_lines:
+        if line.startswith("info string intrep_performance "):
+            move_performance = _parse_legacy_performance_payload(line, prefix="info string intrep_performance ")
+            continue
+        if line.startswith("info string intrep_batch_performance "):
+            batch_performance = _parse_legacy_performance_payload(line, prefix="info string intrep_batch_performance ")
+            continue
+        user_info_lines.append(line)
+    if move_performance is None and batch_performance is None:
+        return tuple(user_info_lines), None
+    return tuple(user_info_lines), ShogiDecisionTelemetry(
+        move_performance=move_performance,
+        batch_performance=batch_performance,
+    )
+
+
+def _parse_legacy_performance_payload(line: str, *, prefix: str) -> dict[str, object]:
+    payload = json.loads(line[len(prefix) :])
+    return _object_dict(payload)
+
+
+def _dataclass_payload(value: object) -> dict[str, object]:
+    return cast(dict[str, object], asdict(value))
+
+
+def _optional_object_dict(value: object) -> dict[str, object] | None:
+    if value is None:
+        return None
+    return _object_dict(value)
 
 
 def _transition_reward(*, side: str, winner: str | None, done: bool) -> float:

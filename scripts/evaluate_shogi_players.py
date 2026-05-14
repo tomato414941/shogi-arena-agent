@@ -97,10 +97,10 @@ def _evaluation_summary(evaluation: Any) -> dict[str, Any]:
 
 def _performance_summary(results: list[ShogiGameRecord]) -> dict[str, Any] | None:
     samples = [
-        sample
+        transition.decision_telemetry.move_performance
         for result in results
         for transition in result.transitions
-        for sample in _transition_performance_samples(transition.decision_usi_info_lines)
+        if transition.decision_telemetry is not None and transition.decision_telemetry.move_performance is not None
     ]
     if not samples:
         return None
@@ -123,17 +123,6 @@ def _performance_summary(results: list[ShogiGameRecord]) -> dict[str, Any] | Non
     }
     _add_actual_leaf_eval_batch_summary(summary, samples)
     return summary
-
-
-def _transition_performance_samples(info_lines: tuple[str, ...]) -> list[dict[str, Any]]:
-    prefix = "info string intrep_performance "
-    samples: list[dict[str, Any]] = []
-    for line in info_lines:
-        if line.startswith(prefix):
-            payload = json.loads(line[len(prefix) :])
-            if isinstance(payload, dict):
-                samples.append(payload)
-    return samples
 
 
 def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[dict[str, Any]]) -> None:

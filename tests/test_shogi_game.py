@@ -5,6 +5,9 @@ from pathlib import Path
 
 from shogi_arena_agent.shogi_game import (
     ShogiActorSpec,
+    ShogiDecisionTelemetry,
+    ShogiGameRecord,
+    ShogiTransitionRecord,
     load_shogi_game_records_jsonl,
     play_shogi_game,
     position_command,
@@ -163,6 +166,59 @@ class ShogiGameTest(unittest.TestCase):
 
         self.assertEqual(loaded, (result,))
         self.assertNotIn("policy_targets", payload["transitions"][0])
+
+    def test_game_record_json_round_trips_decision_telemetry(self) -> None:
+        result = ShogiGameRecord(
+            black_actor=ShogiActorSpec(kind="checkpoint", name="black", settings={}),
+            white_actor=ShogiActorSpec(kind="checkpoint", name="white", settings={}),
+            initial_position_sfen="start",
+            transitions=(
+                ShogiTransitionRecord(
+                    ply=0,
+                    side="black",
+                    position_sfen="before",
+                    legal_moves=("7g7f",),
+                    action_usi="7g7f",
+                    next_position_sfen="after",
+                    reward=0.0,
+                    done=True,
+                    decision_telemetry=ShogiDecisionTelemetry(
+                        move_performance={"request_wall_time_sec": 0.4},
+                        batch_performance={"position_count": 4},
+                    ),
+                ),
+            ),
+            end_reason="max_plies",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "games.jsonl"
+            save_shogi_game_records_jsonl((result,), path)
+            loaded = load_shogi_game_records_jsonl(path)
+
+        self.assertEqual(loaded, (result,))
+
+    def test_loads_legacy_performance_info_lines_as_decision_telemetry(self) -> None:
+        payload = shogi_game_record_to_json(play_shogi_game(max_plies=1))
+        transition = payload["transitions"][0]
+        assert isinstance(transition, dict)
+        transition["decision_usi_info_lines"] = [
+            "info depth 1 nodes 1 pv 7g7f",
+            'info string intrep_performance {"request_wall_time_sec": 0.4}',
+            'info string intrep_batch_performance {"position_count": 4}',
+        ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "games.jsonl"
+            path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+            loaded = load_shogi_game_records_jsonl(path)
+
+        loaded_transition = loaded[0].transitions[0]
+        self.assertEqual(loaded_transition.decision_usi_info_lines, ("info depth 1 nodes 1 pv 7g7f",))
+        self.assertIsNotNone(loaded_transition.decision_telemetry)
+        assert loaded_transition.decision_telemetry is not None
+        self.assertEqual(loaded_transition.decision_telemetry.move_performance, {"request_wall_time_sec": 0.4})
+        self.assertEqual(loaded_transition.decision_telemetry.batch_performance, {"position_count": 4})
 
     def test_play_shogi_game_starts_policy_session_per_game(self) -> None:
         black_policy = SessionPolicyFactory("7g7f")
