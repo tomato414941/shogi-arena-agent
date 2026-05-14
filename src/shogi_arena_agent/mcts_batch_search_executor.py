@@ -75,63 +75,86 @@ class MctsBatchSearchExecutor:
         if active_states:
             self._expand_roots(active_states, batch_stats)
         while any(state.remaining_simulations > 0 for state in active_states):
-            pending: list[tuple[_BatchedSearchState, PendingSimulation]] = []
-            made_progress = False
-            for state in active_states:
-                if state.remaining_simulations <= 0:
-                    continue
-                board_copy_started_at = perf_counter()
-                board = copy_board(state.board)
-                board_copy_elapsed = perf_counter() - board_copy_started_at
-                state.add_phase_time("board_copy", board_copy_elapsed)
-                batch_stats.add_phase_time("board_copy", board_copy_elapsed)
-
-                selection_started_at = perf_counter()
-                simulation = _select_pending_simulation(state.root, board, c_puct=self.config.c_puct)
-                selection_elapsed = perf_counter() - selection_started_at
-                state.add_phase_time("selection", selection_elapsed)
-                batch_stats.add_phase_time("selection", selection_elapsed)
-                if simulation is None:
-                    state.remaining_simulations = 0
-                    continue
-                if simulation.board.is_game_over():
-                    backup_started_at = perf_counter()
-                    _backpropagate_path(simulation.path, -1.0)
-                    backup_elapsed = perf_counter() - backup_started_at
-                    state.add_phase_time("backup", backup_elapsed)
-                    batch_stats.add_phase_time("backup", backup_elapsed)
-                    state.completed_simulations += 1
-                    batch_stats.completed_simulations += 1
-                    state.remaining_simulations -= 1
-                    made_progress = True
-                    continue
-                legal_moves_started_at = perf_counter()
-                legal_moves = legal_move_usis(simulation.board)
-                legal_moves_elapsed = perf_counter() - legal_moves_started_at
-                state.add_phase_time("legal_moves", legal_moves_elapsed)
-                batch_stats.add_phase_time("legal_moves", legal_moves_elapsed)
-                if not legal_moves:
-                    backup_started_at = perf_counter()
-                    _backpropagate_path(simulation.path, -1.0)
-                    backup_elapsed = perf_counter() - backup_started_at
-                    state.add_phase_time("backup", backup_elapsed)
-                    batch_stats.add_phase_time("backup", backup_elapsed)
-                    state.completed_simulations += 1
-                    batch_stats.completed_simulations += 1
-                    state.remaining_simulations -= 1
-                    made_progress = True
-                    continue
-                simulation.node.pending = True
-                pending.append((state, PendingSimulation(path=simulation.path, board=simulation.board, legal_moves=legal_moves)))
-                made_progress = True
-                if len(pending) >= self.config.evaluation_batch_size:
-                    break
+            pending, made_progress = self._collect_pending_leaf_evaluations(active_states, batch_stats)
             if pending:
                 self._evaluate_pending(pending, batch_stats)
             elif not made_progress:
                 break
         self.last_batch_performance = batch_stats.to_performance(started_at)
         return [state.to_result() for state in states]
+
+    def _collect_pending_leaf_evaluations(
+        self,
+        active_states: Sequence["_BatchedSearchState"],
+        batch_stats: "_BatchSearchStats",
+    ) -> tuple[list[tuple["_BatchedSearchState", PendingSimulation]], bool]:
+        pending: list[tuple[_BatchedSearchState, PendingSimulation]] = []
+        made_progress = False
+        for state in active_states:
+            if state.remaining_simulations <= 0:
+                continue
+            simulation, progressed = self._select_leaf_for_evaluation(state, batch_stats)
+            made_progress = made_progress or progressed
+            if simulation is None:
+                continue
+            pending.append((state, simulation))
+            if len(pending) >= self.config.evaluation_batch_size:
+                break
+        return pending, made_progress
+
+    def _select_leaf_for_evaluation(
+        self,
+        state: "_BatchedSearchState",
+        batch_stats: "_BatchSearchStats",
+    ) -> tuple[PendingSimulation | None, bool]:
+        board_copy_started_at = perf_counter()
+        board = copy_board(state.board)
+        self._record_phase_time(state, batch_stats, "board_copy", perf_counter() - board_copy_started_at)
+
+        selection_started_at = perf_counter()
+        simulation = _select_pending_simulation(state.root, board, c_puct=self.config.c_puct)
+        self._record_phase_time(state, batch_stats, "selection", perf_counter() - selection_started_at)
+        if simulation is None:
+            state.remaining_simulations = 0
+            return None, False
+        if simulation.board.is_game_over():
+            self._complete_simulation(state, batch_stats, simulation.path, value=-1.0)
+            return None, True
+
+        legal_moves_started_at = perf_counter()
+        legal_moves = legal_move_usis(simulation.board)
+        self._record_phase_time(state, batch_stats, "legal_moves", perf_counter() - legal_moves_started_at)
+        if not legal_moves:
+            self._complete_simulation(state, batch_stats, simulation.path, value=-1.0)
+            return None, True
+
+        simulation.node.pending = True
+        return PendingSimulation(path=simulation.path, board=simulation.board, legal_moves=legal_moves), True
+
+    def _complete_simulation(
+        self,
+        state: "_BatchedSearchState",
+        batch_stats: "_BatchSearchStats",
+        path: list[MctsNode],
+        *,
+        value: float,
+    ) -> None:
+        backup_started_at = perf_counter()
+        _backpropagate_path(path, value)
+        self._record_phase_time(state, batch_stats, "backup", perf_counter() - backup_started_at)
+        state.completed_simulations += 1
+        batch_stats.completed_simulations += 1
+        state.remaining_simulations -= 1
+
+    @staticmethod
+    def _record_phase_time(
+        state: "_BatchedSearchState",
+        batch_stats: "_BatchSearchStats",
+        name: str,
+        elapsed: float,
+    ) -> None:
+        state.add_phase_time(name, elapsed)
+        batch_stats.add_phase_time(name, elapsed)
 
     def _expand_roots(self, states: Sequence["_BatchedSearchState"], batch_stats: "_BatchSearchStats") -> None:
         started_at = perf_counter()
@@ -145,8 +168,7 @@ class MctsBatchSearchExecutor:
             expand_started_at = perf_counter()
             _expand_node_with_evaluation(state.root, state.legal_moves, priors)
             expand_elapsed = perf_counter() - expand_started_at
-            state.add_phase_time("expand", expand_elapsed)
-            batch_stats.add_phase_time("expand", expand_elapsed)
+            self._record_phase_time(state, batch_stats, "expand", expand_elapsed)
             state.model_call_count += 1
             state.model_wall_time_sec += elapsed
 
@@ -176,16 +198,8 @@ class MctsBatchSearchExecutor:
             expand_started_at = perf_counter()
             _expand_node_with_evaluation(simulation.path[-1], simulation.legal_moves, priors)
             expand_elapsed = perf_counter() - expand_started_at
-            state.add_phase_time("expand", expand_elapsed)
-            batch_stats.add_phase_time("expand", expand_elapsed)
-            backup_started_at = perf_counter()
-            _backpropagate_path(simulation.path, max(-1.0, min(1.0, float(value))))
-            backup_elapsed = perf_counter() - backup_started_at
-            state.add_phase_time("backup", backup_elapsed)
-            batch_stats.add_phase_time("backup", backup_elapsed)
-            state.completed_simulations += 1
-            batch_stats.completed_simulations += 1
-            state.remaining_simulations -= 1
+            self._record_phase_time(state, batch_stats, "expand", expand_elapsed)
+            self._complete_simulation(state, batch_stats, simulation.path, value=max(-1.0, min(1.0, float(value))))
             state.model_call_count += 1
             state.model_wall_time_sec += elapsed
 
