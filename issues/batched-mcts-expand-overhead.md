@@ -41,12 +41,28 @@ worker=6: expand 65.81%, selection 21.63%, legal_moves 7.73%, board_copy 3.52%
 Expansion remains the largest measured non-model phase after the `cshogi`
 backend change and after the `MctsBatchSearchExecutor` split.
 
+2026-05-14 L4 secure RunPod self-play measurement:
+
+```text
+GPU: L4
+Pod: 16 vCPU / 94 GiB secure
+data center: US-MO-2
+MCTS simulations per move: 16
+NN leaf eval batch limit: 32
+total games: 48
+generation worker processes: 6
+concurrent games per process: 8
+plies/sec: 76.60
+GPU util avg: 45.73%
+actual NN leaf eval batch avg: 6.14
+actual NN leaf eval batch max: 8
+actual NN leaf eval batch fill: 19.18%
+```
+
+In that run, `expand` remained the largest measured non-model phase in
+`summary.batch_performance.phase_wall_time_sec_total`.
+
 ## Current Position
-
-Do not optimize this before confirming that Online Replay learning behavior is
-stable at a small real training scale.
-
-This is now a real optimization candidate, but it is not blocking correctness.
 
 2026-05-14: a small hot-path cleanup removed the intermediate normalized-prior
 dictionary during expansion. This issue remains open until a follow-up profile
