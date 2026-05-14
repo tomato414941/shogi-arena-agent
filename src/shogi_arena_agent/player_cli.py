@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
-from shogi_arena_agent.mcts_move_selector import (
+from shogi_arena_agent.mcts_config import (
     MctsConfig,
-    MctsMoveSelector,
     evaluation_move_selection_config,
     self_play_move_selection_config,
 )
+from shogi_arena_agent.mcts_move_selector import MctsMoveSelector
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
 from shogi_arena_agent.usi import BOARD_BACKENDS
 from shogi_arena_agent.multipv_policy import (

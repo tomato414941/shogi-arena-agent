@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
 from time import perf_counter
-from dataclasses import dataclass, field
-from typing import Protocol
 
-from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis, validate_board_backend
+from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis
+from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, evaluation_move_selection_config
+from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator, UniformPolicyValueEvaluator
+from shogi_arena_agent.mcts_performance import MctsMovePerformance, leaf_eval_batch_metrics
 from shogi_arena_agent.mcts_tree import (
     MctsNode,
     PendingSimulation,
@@ -18,112 +18,6 @@ from shogi_arena_agent.mcts_tree import (
     visit_count_policy_targets,
 )
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
-
-
-class PolicyValueEvaluator(Protocol):
-    def evaluate_batch(
-        self,
-        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
-    ) -> list[tuple[dict[str, float], float]]:
-        """Return move priors and values from the side-to-move perspective."""
-
-
-@dataclass(frozen=True)
-class MctsConfig:
-    simulation_count: int = 32
-    c_puct: float = 1.5
-    evaluation_batch_size: int = 1
-    move_time_limit_sec: float | None = None
-    board_backend: str = "python-shogi"
-    root_reuse: bool = False
-
-    def __post_init__(self) -> None:
-        if self.simulation_count <= 0:
-            raise ValueError("simulation_count must be positive")
-        if self.c_puct <= 0.0:
-            raise ValueError("c_puct must be positive")
-        if self.evaluation_batch_size <= 0:
-            raise ValueError("evaluation_batch_size must be positive")
-        if self.move_time_limit_sec is not None and self.move_time_limit_sec < 0.0:
-            raise ValueError("move_time_limit_sec must be non-negative")
-        validate_board_backend(self.board_backend)
-
-
-@dataclass(frozen=True)
-class MoveSelectionConfig:
-    mode: str = "deterministic"
-    temperature: float = 1.0
-    temperature_plies: int = 0
-    seed: int | None = None
-
-    def __post_init__(self) -> None:
-        if self.mode not in {"deterministic", "visit_sample"}:
-            raise ValueError("mode must be deterministic or visit_sample")
-        if self.temperature <= 0.0:
-            raise ValueError("temperature must be positive")
-        if self.temperature_plies < 0:
-            raise ValueError("temperature_plies must be non-negative")
-
-
-def evaluation_move_selection_config() -> MoveSelectionConfig:
-    return MoveSelectionConfig(mode="deterministic")
-
-
-def self_play_move_selection_config(*, seed: int | None = None) -> MoveSelectionConfig:
-    return MoveSelectionConfig(mode="visit_sample", temperature=1.0, temperature_plies=40, seed=seed)
-
-
-@dataclass(frozen=True)
-class MctsMovePerformance:
-    request_wall_time_sec: float
-    model_call_count: int
-    model_wall_time_sec: float
-    non_model_wall_time_sec: float
-    output_count: int
-    output_per_sec: float
-    actual_nn_leaf_eval_batch_size_avg: float = 0.0
-    actual_nn_leaf_eval_batch_size_max: int = 0
-    actual_nn_leaf_eval_batch_count: int = 0
-    actual_nn_leaf_eval_batch_size_histogram: dict[int, int] = field(default_factory=dict)
-    actual_nn_leaf_eval_batch_size_fill_ratio_avg: float = 0.0
-    phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
-
-
-def leaf_eval_batch_metrics(batch_sizes: Sequence[int], *, batch_size_limit: int) -> dict[str, object]:
-    if not batch_sizes:
-        return {
-            "actual_nn_leaf_eval_batch_size_avg": 0.0,
-            "actual_nn_leaf_eval_batch_size_max": 0,
-            "actual_nn_leaf_eval_batch_count": 0,
-            "actual_nn_leaf_eval_batch_size_histogram": {},
-            "actual_nn_leaf_eval_batch_size_fill_ratio_avg": 0.0,
-        }
-    histogram: dict[int, int] = {}
-    for size in batch_sizes:
-        histogram[size] = histogram.get(size, 0) + 1
-    size_avg = sum(batch_sizes) / len(batch_sizes)
-    return {
-        "actual_nn_leaf_eval_batch_size_avg": size_avg,
-        "actual_nn_leaf_eval_batch_size_max": max(batch_sizes),
-        "actual_nn_leaf_eval_batch_count": len(batch_sizes),
-        "actual_nn_leaf_eval_batch_size_histogram": dict(sorted(histogram.items())),
-        "actual_nn_leaf_eval_batch_size_fill_ratio_avg": size_avg / batch_size_limit if batch_size_limit > 0 else 0.0,
-    }
-
-
-class UniformPolicyValueEvaluator:
-    def evaluate_batch(
-        self,
-        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
-    ) -> list[tuple[dict[str, float], float]]:
-        evaluations: list[tuple[dict[str, float], float]] = []
-        for _board, legal_moves in requests:
-            if not legal_moves:
-                evaluations.append(({}, -1.0))
-                continue
-            prior = 1.0 / len(legal_moves)
-            evaluations.append(({move: prior for move in legal_moves}, 0.0))
-        return evaluations
 
 
 class MctsSearchSession:

@@ -12,7 +12,7 @@ from typing import Any
 
 from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
 from shogi_arena_agent.mcts_batch_search_executor import MctsBatchSearchExecutor
-from shogi_arena_agent.mcts_move_selector import (
+from shogi_arena_agent.mcts_config import (
     MctsConfig,
     evaluation_move_selection_config,
     self_play_move_selection_config,

@@ -6,12 +6,11 @@ import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
 from shogi_arena_agent.mcts_batch_search_executor import MctsBatchSearchExecutor
+from shogi_arena_agent.mcts_config import MctsConfig, self_play_move_selection_config
+from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator
 from shogi_arena_agent.mcts_move_selector import (
-    MctsConfig,
     MctsMoveSelector,
     MctsSearchSession,
-    PolicyValueEvaluator,
-    self_play_move_selection_config,
 )
 from shogi_arena_agent.usi import UsiEngine, UsiPosition, board_from_position
 

@@ -6,13 +6,11 @@ from dataclasses import dataclass, field
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis
-from shogi_arena_agent.mcts_move_selector import (
-    MctsConfig,
+from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, evaluation_move_selection_config
+from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator, UniformPolicyValueEvaluator
+from shogi_arena_agent.mcts_performance import (
+    MctsBatchPerformance,
     MctsMovePerformance,
-    MoveSelectionConfig,
-    PolicyValueEvaluator,
-    UniformPolicyValueEvaluator,
-    evaluation_move_selection_config,
     leaf_eval_batch_metrics,
 )
 from shogi_arena_agent.mcts_tree import (
@@ -33,23 +31,6 @@ class MctsMoveResult:
     move: str
     policy_targets: dict[str, float] | None
     performance: MctsMovePerformance
-
-
-@dataclass(frozen=True)
-class MctsBatchPerformance:
-    request_wall_time_sec: float
-    position_count: int
-    completed_simulations: int
-    model_call_count: int
-    model_wall_time_sec: float
-    non_model_wall_time_sec: float
-    output_per_sec: float
-    actual_nn_leaf_eval_batch_size_avg: float = 0.0
-    actual_nn_leaf_eval_batch_size_max: int = 0
-    actual_nn_leaf_eval_batch_count: int = 0
-    actual_nn_leaf_eval_batch_size_histogram: dict[int, int] = field(default_factory=dict)
-    actual_nn_leaf_eval_batch_size_fill_ratio_avg: float = 0.0
-    phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
 
 class MctsBatchSearchExecutor:
