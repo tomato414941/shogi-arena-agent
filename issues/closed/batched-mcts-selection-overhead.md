@@ -1,6 +1,11 @@
 # Batched MCTS Selection Overhead
 
-Status: open. Priority: medium.
+Status: closed. Priority: medium.
+
+Closed on 2026-05-14. The known avoidable selection overhead was removed by
+avoiding temporary candidate-list allocation in the MCTS child selection loop.
+Further improvements would require broader MCTS tree representation work and
+should be tracked separately if needed.
 
 ## Issue
 
