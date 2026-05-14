@@ -48,6 +48,10 @@ stable at a small real training scale.
 
 This is now a real optimization candidate, but it is not blocking correctness.
 
+2026-05-14: a small hot-path cleanup removed the intermediate normalized-prior
+dictionary during expansion. This issue remains open until a follow-up profile
+shows whether that materially changes expansion share or throughput.
+
 ## Candidate Directions
 
 - reduce per-node Python object allocation,

@@ -80,6 +80,15 @@ def normalize_priors(legal_moves: tuple[str, ...], priors: dict[str, float]) -> 
     return {move: prior / total for move, prior in positive_priors.items()}
 
 
+def expanded_children(legal_moves: tuple[str, ...], priors: dict[str, float]) -> dict[str, MctsNode]:
+    prior_values = tuple(max(0.0, float(priors.get(move, 0.0))) for move in legal_moves)
+    total = sum(prior_values)
+    if total <= 0.0:
+        uniform = 1.0 / len(legal_moves)
+        return {move: MctsNode(prior=uniform) for move in legal_moves}
+    return {move: MctsNode(prior=prior / total) for move, prior in zip(legal_moves, prior_values, strict=True)}
+
+
 def visit_count_policy_targets(root: MctsNode) -> dict[str, float]:
     total = sum(child.visit_count for child in root.children.values())
     if total <= 0:

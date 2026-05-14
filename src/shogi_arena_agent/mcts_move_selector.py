@@ -12,7 +12,7 @@ from shogi_arena_agent.mcts_tree import (
     MctsNode,
     PendingSimulation,
     SelectedSimulation,
-    normalize_priors,
+    expanded_children,
     position_moves,
     select_final_move,
     visit_count_policy_targets,
@@ -252,8 +252,7 @@ class MctsSearchSession:
         return max(-1.0, min(1.0, float(value)))
 
     def _expand_with_evaluation(self, node: MctsNode, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:
-        normalized_priors = normalize_priors(legal_moves, priors)
-        node.children = {move: MctsNode(prior=normalized_priors[move]) for move in legal_moves}
+        node.children = expanded_children(legal_moves, priors)
 
     def _select_child(self, node: MctsNode) -> tuple[str, MctsNode] | None:
         parent_visits = max(1, node.visit_count)
@@ -315,4 +314,3 @@ class MctsMoveSelector:
         self.last_policy_targets = self._default_session.last_policy_targets
         self.last_performance = self._default_session.last_performance
         return move
-

@@ -19,7 +19,7 @@ from shogi_arena_agent.mcts_tree import (
     MctsNode,
     PendingSimulation,
     SelectedSimulation,
-    normalize_priors,
+    expanded_children,
     position_ply,
     select_final_move_at_ply,
     visit_count_policy_targets,
@@ -335,8 +335,7 @@ def _select_child_node(node: MctsNode, *, c_puct: float) -> tuple[str, MctsNode]
 
 
 def _expand_node_with_evaluation(node: MctsNode, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:
-    normalized_priors = normalize_priors(legal_moves, priors)
-    node.children = {move: MctsNode(prior=normalized_priors[move]) for move in legal_moves}
+    node.children = expanded_children(legal_moves, priors)
 
 
 def _backpropagate_path(path: list[MctsNode], value: float) -> None:
