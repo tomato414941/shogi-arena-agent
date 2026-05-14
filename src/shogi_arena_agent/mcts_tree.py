@@ -14,7 +14,7 @@ class MoveSelectionLike(Protocol):
     temperature_plies: int
 
 
-@dataclass
+@dataclass(slots=True)
 class MctsNode:
     prior: float
     visit_count: int = 0
