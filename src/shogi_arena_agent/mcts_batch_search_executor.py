@@ -14,6 +14,7 @@ from shogi_arena_agent.mcts_move_selector import (
     PolicyValueEvaluator,
     UniformPolicyValueEvaluator,
     evaluation_move_selection_config,
+    leaf_eval_batch_metrics,
 )
 from shogi_arena_agent.mcts_tree import (
     MctsNode,
@@ -46,6 +47,8 @@ class MctsBatchPerformance:
     actual_nn_leaf_eval_batch_size_avg: float = 0.0
     actual_nn_leaf_eval_batch_size_max: int = 0
     actual_nn_leaf_eval_batch_count: int = 0
+    actual_nn_leaf_eval_batch_size_histogram: dict[int, int] = field(default_factory=dict)
+    actual_nn_leaf_eval_batch_size_fill_ratio_avg: float = 0.0
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
 
@@ -70,7 +73,10 @@ class MctsBatchSearchExecutor:
 
     def select_moves(self, positions: Sequence[UsiPosition]) -> list[MctsMoveResult]:
         started_at = perf_counter()
-        batch_stats = _BatchSearchStats(position_count=len(positions))
+        batch_stats = _BatchSearchStats(
+            position_count=len(positions),
+            leaf_eval_batch_size_limit=self.config.evaluation_batch_size,
+        )
         states = [
             _BatchedSearchState.from_position(
                 position,
@@ -78,6 +84,7 @@ class MctsBatchSearchExecutor:
                 board_backend=self.config.board_backend,
                 move_selection=self.move_selection,
                 rng=self._rng,
+                leaf_eval_batch_size_limit=self.config.evaluation_batch_size,
             )
             for position in positions
         ]
@@ -179,9 +186,11 @@ class MctsBatchSearchExecutor:
         elapsed = perf_counter() - started_at
         batch_stats.model_call_count += 1
         batch_stats.model_wall_time_sec += elapsed
+        batch_stats.add_leaf_eval_batch_size(len(pending))
         if len(evaluations) != len(pending):
             raise ValueError("batch evaluator must return one evaluation per request")
         for (state, simulation), (priors, value) in zip(pending, evaluations, strict=True):
+            state.leaf_eval_batch_sizes.append(len(pending))
             simulation.path[-1].pending = False
             expand_started_at = perf_counter()
             _expand_node_with_evaluation(simulation.path[-1], simulation.legal_moves, priors)
@@ -208,9 +217,11 @@ class _BatchedSearchState:
     started_at: float
     remaining_simulations: int
     ply: int
+    leaf_eval_batch_size_limit: int
     completed_simulations: int = 0
     model_call_count: int = 0
     model_wall_time_sec: float = 0.0
+    leaf_eval_batch_sizes: list[int] = field(default_factory=list)
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
     move_selection: MoveSelectionConfig = field(default_factory=evaluation_move_selection_config)
     rng: random.Random = field(default_factory=random.Random)
@@ -224,6 +235,7 @@ class _BatchedSearchState:
         board_backend: str,
         move_selection: MoveSelectionConfig,
         rng: random.Random,
+        leaf_eval_batch_size_limit: int,
     ) -> "_BatchedSearchState":
         position_started_at = perf_counter()
         board = board_from_position(position, backend=board_backend)
@@ -238,6 +250,7 @@ class _BatchedSearchState:
             started_at=perf_counter(),
             remaining_simulations=simulation_count,
             ply=position_ply(position),
+            leaf_eval_batch_size_limit=leaf_eval_batch_size_limit,
             move_selection=move_selection,
             rng=rng,
         )
@@ -258,6 +271,8 @@ class _BatchedSearchState:
                     model_call_count=self.model_call_count,
                     model_wall_time_sec=self.model_wall_time_sec,
                     output_count=0,
+                    leaf_eval_batch_sizes=self.leaf_eval_batch_sizes,
+                    leaf_eval_batch_size_limit=self.leaf_eval_batch_size_limit,
                     phase_wall_time_sec=self.phase_wall_time_sec,
                 ),
             )
@@ -269,6 +284,8 @@ class _BatchedSearchState:
                 model_call_count=self.model_call_count,
                 model_wall_time_sec=self.model_wall_time_sec,
                 output_count=self.completed_simulations,
+                leaf_eval_batch_sizes=self.leaf_eval_batch_sizes,
+                leaf_eval_batch_size_limit=self.leaf_eval_batch_size_limit,
                 phase_wall_time_sec=self.phase_wall_time_sec,
             ),
         )
@@ -277,9 +294,11 @@ class _BatchedSearchState:
 @dataclass
 class _BatchSearchStats:
     position_count: int
+    leaf_eval_batch_size_limit: int
     completed_simulations: int = 0
     model_call_count: int = 0
     model_wall_time_sec: float = 0.0
+    leaf_eval_batch_sizes: list[int] = field(default_factory=list)
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
 
     def add_phase_time(self, name: str, elapsed: float) -> None:
@@ -288,6 +307,9 @@ class _BatchSearchStats:
     def add_phase_times(self, phase_times: dict[str, float]) -> None:
         for name, elapsed in phase_times.items():
             self.add_phase_time(name, elapsed)
+
+    def add_leaf_eval_batch_size(self, size: int) -> None:
+        self.leaf_eval_batch_sizes.append(size)
 
     def to_performance(self, started_at: float) -> MctsBatchPerformance:
         request_wall_time_sec = perf_counter() - started_at
@@ -303,6 +325,10 @@ class _BatchSearchStats:
             model_wall_time_sec=self.model_wall_time_sec,
             non_model_wall_time_sec=non_model_wall_time_sec,
             output_per_sec=output_per_sec,
+            **leaf_eval_batch_metrics(
+                self.leaf_eval_batch_sizes,
+                batch_size_limit=self.leaf_eval_batch_size_limit,
+            ),
             phase_wall_time_sec=phase_times,
         )
 
@@ -351,6 +377,8 @@ def _batched_performance_since(
     model_call_count: int,
     model_wall_time_sec: float,
     output_count: int,
+    leaf_eval_batch_sizes: Sequence[int],
+    leaf_eval_batch_size_limit: int,
     phase_wall_time_sec: dict[str, float],
 ) -> MctsMovePerformance:
     request_wall_time_sec = perf_counter() - started_at
@@ -365,5 +393,9 @@ def _batched_performance_since(
         non_model_wall_time_sec=non_model_wall_time_sec,
         output_count=output_count,
         output_per_sec=output_per_sec,
+        **leaf_eval_batch_metrics(
+            leaf_eval_batch_sizes,
+            batch_size_limit=leaf_eval_batch_size_limit,
+        ),
         phase_wall_time_sec=phase_times,
     )

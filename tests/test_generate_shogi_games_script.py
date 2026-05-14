@@ -258,6 +258,9 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertIn("inference_performance", summary)
         self.assertIn("batch_performance", summary)
         self.assertIn("phase_wall_time_sec_total", summary["batch_performance"])
+        self.assertGreater(summary["batch_performance"]["actual_nn_leaf_eval_batch_size_avg"], 0.0)
+        self.assertIn("actual_nn_leaf_eval_batch_size_histogram", summary["batch_performance"])
+        self.assertIn("actual_nn_leaf_eval_batch_size_fill_ratio_avg", summary["batch_performance"])
 
     def test_parallel_checkpoint_mcts_rejects_root_reuse(self) -> None:
         module = _load_script_module()

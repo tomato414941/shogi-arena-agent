@@ -125,32 +125,47 @@ def _performance_summary(results: list[ShogiGameRecord]) -> dict[str, Any] | Non
     return summary
 
 
-def _transition_performance_samples(info_lines: tuple[str, ...]) -> list[dict[str, float]]:
+def _transition_performance_samples(info_lines: tuple[str, ...]) -> list[dict[str, Any]]:
     prefix = "info string intrep_performance "
-    samples: list[dict[str, float]] = []
+    samples: list[dict[str, Any]] = []
     for line in info_lines:
         if line.startswith(prefix):
             payload = json.loads(line[len(prefix) :])
-            samples.append({key: float(value) for key, value in payload.items() if isinstance(value, int | float)})
+            if isinstance(payload, dict):
+                samples.append(payload)
     return samples
 
 
-def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[dict[str, float]]) -> None:
+def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[dict[str, Any]]) -> None:
     avg_values = [
         sample["actual_nn_leaf_eval_batch_size_avg"]
         for sample in samples
-        if "actual_nn_leaf_eval_batch_size_avg" in sample
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_size_avg"), int | float)
     ]
     max_values = [
         sample["actual_nn_leaf_eval_batch_size_max"]
         for sample in samples
-        if "actual_nn_leaf_eval_batch_size_max" in sample
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_size_max"), int | float)
     ]
     count_values = [
         sample["actual_nn_leaf_eval_batch_count"]
         for sample in samples
-        if "actual_nn_leaf_eval_batch_count" in sample
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_count"), int | float)
     ]
+    fill_ratio_values = [
+        sample["actual_nn_leaf_eval_batch_size_fill_ratio_avg"]
+        for sample in samples
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_size_fill_ratio_avg"), int | float)
+    ]
+    histogram: dict[int, int] = {}
+    for sample in samples:
+        sample_histogram = sample.get("actual_nn_leaf_eval_batch_size_histogram")
+        if not isinstance(sample_histogram, dict):
+            continue
+        for size, count in sample_histogram.items():
+            if not isinstance(count, int):
+                continue
+            histogram[int(size)] = histogram.get(int(size), 0) + count
     if not avg_values or not max_values:
         return
     summary["actual_nn_leaf_eval_batch_size_avg"] = mean(avg_values)
@@ -158,6 +173,10 @@ def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[d
     if count_values:
         summary["actual_nn_leaf_eval_batch_count_avg"] = mean(count_values)
         summary["actual_nn_leaf_eval_batch_count_max"] = max(count_values)
+    if fill_ratio_values:
+        summary["actual_nn_leaf_eval_batch_size_fill_ratio_avg"] = mean(fill_ratio_values)
+    if histogram:
+        summary["actual_nn_leaf_eval_batch_size_histogram"] = dict(sorted(histogram.items()))
 
 
 def _percentile(values: list[float], fraction: float) -> float:

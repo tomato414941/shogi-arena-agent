@@ -132,6 +132,8 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertEqual(policy.last_performance.actual_nn_leaf_eval_batch_size_max, 4)
         self.assertGreaterEqual(policy.last_performance.actual_nn_leaf_eval_batch_size_avg, 1.0)
         self.assertGreater(policy.last_performance.actual_nn_leaf_eval_batch_count, 0)
+        self.assertIn(4, policy.last_performance.actual_nn_leaf_eval_batch_size_histogram)
+        self.assertGreater(policy.last_performance.actual_nn_leaf_eval_batch_size_fill_ratio_avg, 0.0)
 
     def test_root_reuse_can_continue_from_existing_child(self) -> None:
         evaluator = BatchCountingEvaluator()
@@ -218,6 +220,11 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertGreater(performance.request_wall_time_sec, 0.0)
         self.assertGreater(performance.model_call_count, 0)
         self.assertGreater(performance.phase_wall_time_sec["legal_moves"], 0.0)
+        self.assertGreater(performance.actual_nn_leaf_eval_batch_size_avg, 0.0)
+        self.assertGreater(performance.actual_nn_leaf_eval_batch_size_max, 0)
+        self.assertGreater(performance.actual_nn_leaf_eval_batch_count, 0)
+        self.assertTrue(performance.actual_nn_leaf_eval_batch_size_histogram)
+        self.assertGreater(performance.actual_nn_leaf_eval_batch_size_fill_ratio_avg, 0.0)
 
     def test_batch_executor_supports_cshogi_backend(self) -> None:
         selector = MctsBatchSearchExecutor(config=MctsConfig(simulation_count=4, evaluation_batch_size=8, board_backend="cshogi"))

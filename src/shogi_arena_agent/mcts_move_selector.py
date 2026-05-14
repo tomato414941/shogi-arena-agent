@@ -84,7 +84,31 @@ class MctsMovePerformance:
     actual_nn_leaf_eval_batch_size_avg: float = 0.0
     actual_nn_leaf_eval_batch_size_max: int = 0
     actual_nn_leaf_eval_batch_count: int = 0
+    actual_nn_leaf_eval_batch_size_histogram: dict[int, int] = field(default_factory=dict)
+    actual_nn_leaf_eval_batch_size_fill_ratio_avg: float = 0.0
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
+
+
+def leaf_eval_batch_metrics(batch_sizes: Sequence[int], *, batch_size_limit: int) -> dict[str, object]:
+    if not batch_sizes:
+        return {
+            "actual_nn_leaf_eval_batch_size_avg": 0.0,
+            "actual_nn_leaf_eval_batch_size_max": 0,
+            "actual_nn_leaf_eval_batch_count": 0,
+            "actual_nn_leaf_eval_batch_size_histogram": {},
+            "actual_nn_leaf_eval_batch_size_fill_ratio_avg": 0.0,
+        }
+    histogram: dict[int, int] = {}
+    for size in batch_sizes:
+        histogram[size] = histogram.get(size, 0) + 1
+    size_avg = sum(batch_sizes) / len(batch_sizes)
+    return {
+        "actual_nn_leaf_eval_batch_size_avg": size_avg,
+        "actual_nn_leaf_eval_batch_size_max": max(batch_sizes),
+        "actual_nn_leaf_eval_batch_count": len(batch_sizes),
+        "actual_nn_leaf_eval_batch_size_histogram": dict(sorted(histogram.items())),
+        "actual_nn_leaf_eval_batch_size_fill_ratio_avg": size_avg / batch_size_limit if batch_size_limit > 0 else 0.0,
+    }
 
 
 class UniformPolicyValueEvaluator:
@@ -271,9 +295,6 @@ class MctsSearchSession:
         request_wall_time_sec = perf_counter() - started_at
         non_model_wall_time_sec = max(0.0, request_wall_time_sec - self._model_wall_time_sec)
         output_per_sec = output_count / request_wall_time_sec if request_wall_time_sec > 0 else 0.0
-        leaf_batch_size_avg = (
-            sum(self._leaf_eval_batch_sizes) / len(self._leaf_eval_batch_sizes) if self._leaf_eval_batch_sizes else 0.0
-        )
         return MctsMovePerformance(
             request_wall_time_sec=request_wall_time_sec,
             model_call_count=self._model_call_count,
@@ -281,9 +302,10 @@ class MctsSearchSession:
             non_model_wall_time_sec=non_model_wall_time_sec,
             output_count=output_count,
             output_per_sec=output_per_sec,
-            actual_nn_leaf_eval_batch_size_avg=leaf_batch_size_avg,
-            actual_nn_leaf_eval_batch_size_max=max(self._leaf_eval_batch_sizes, default=0),
-            actual_nn_leaf_eval_batch_count=len(self._leaf_eval_batch_sizes),
+            **leaf_eval_batch_metrics(
+                self._leaf_eval_batch_sizes,
+                batch_size_limit=self.config.evaluation_batch_size,
+            ),
         )
 
 

@@ -414,6 +414,20 @@ def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[d
         for sample in samples
         if isinstance(sample.get("actual_nn_leaf_eval_batch_count"), int | float)
     ]
+    fill_ratio_values = [
+        sample["actual_nn_leaf_eval_batch_size_fill_ratio_avg"]
+        for sample in samples
+        if isinstance(sample.get("actual_nn_leaf_eval_batch_size_fill_ratio_avg"), int | float)
+    ]
+    histogram: dict[int, int] = {}
+    for sample in samples:
+        sample_histogram = sample.get("actual_nn_leaf_eval_batch_size_histogram")
+        if not isinstance(sample_histogram, dict):
+            continue
+        for size, count in sample_histogram.items():
+            if not isinstance(count, int):
+                continue
+            histogram[int(size)] = histogram.get(int(size), 0) + count
     if not avg_values or not max_values:
         return
     summary["actual_nn_leaf_eval_batch_size_avg"] = mean(avg_values)
@@ -421,6 +435,10 @@ def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[d
     if count_values:
         summary["actual_nn_leaf_eval_batch_count_avg"] = mean(count_values)
         summary["actual_nn_leaf_eval_batch_count_max"] = max(count_values)
+    if fill_ratio_values:
+        summary["actual_nn_leaf_eval_batch_size_fill_ratio_avg"] = mean(fill_ratio_values)
+    if histogram:
+        summary["actual_nn_leaf_eval_batch_size_histogram"] = dict(sorted(histogram.items()))
 
 
 def _transition_performance_samples(info_lines: tuple[str, ...], *, prefix: str) -> list[dict[str, Any]]:
