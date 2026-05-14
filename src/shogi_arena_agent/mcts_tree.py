@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -94,6 +95,21 @@ def visit_count_policy_targets(root: MctsNode) -> dict[str, float]:
     if total <= 0:
         return normalize_priors(tuple(root.children), {move: child.prior for move, child in root.children.items()})
     return {move: child.visit_count / total for move, child in root.children.items()}
+
+
+def select_puct_child(node: MctsNode, *, c_puct: float) -> tuple[str, MctsNode] | None:
+    parent_sqrt = math.sqrt(max(1, node.visit_count))
+    best: tuple[str, MctsNode] | None = None
+    best_score: tuple[float, str] | None = None
+    for move, child in node.children.items():
+        if child.pending:
+            continue
+        exploration = c_puct * child.prior * parent_sqrt / (1 + child.visit_count)
+        score = (-child.value_mean + exploration, move)
+        if best_score is None or score > best_score:
+            best = (move, child)
+            best_score = score
+    return best
 
 
 def _sample_visit_count_move(root: MctsNode, *, temperature: float, rng: random.Random) -> str:

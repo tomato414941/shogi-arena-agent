@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 from collections.abc import Sequence
 from time import perf_counter
@@ -15,6 +14,7 @@ from shogi_arena_agent.mcts_tree import (
     expanded_children,
     position_moves,
     select_final_move,
+    select_puct_child,
     visit_count_policy_targets,
 )
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
@@ -279,17 +279,7 @@ class MctsSearchSession:
         node.children = expanded_children(legal_moves, priors)
 
     def _select_child(self, node: MctsNode) -> tuple[str, MctsNode] | None:
-        parent_visits = max(1, node.visit_count)
-
-        def score(item: tuple[str, MctsNode]) -> tuple[float, str]:
-            move, child = item
-            exploration = self.config.c_puct * child.prior * math.sqrt(parent_visits) / (1 + child.visit_count)
-            return -child.value_mean + exploration, move
-
-        candidates = [item for item in node.children.items() if not item[1].pending]
-        if not candidates:
-            return None
-        return max(candidates, key=score)
+        return select_puct_child(node, c_puct=self.config.c_puct)
 
     def _performance_since(self, started_at: float, *, output_count: int) -> MctsMovePerformance:
         request_wall_time_sec = perf_counter() - started_at

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -23,6 +22,7 @@ from shogi_arena_agent.mcts_tree import (
     expanded_children,
     position_ply,
     select_final_move_at_ply,
+    select_puct_child,
     visit_count_policy_targets,
 )
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
@@ -337,27 +337,13 @@ def _select_pending_simulation(root: MctsNode, board: ShogiBoard, *, c_puct: flo
     node = root
     path = [node]
     while node.children:
-        selected = _select_child_node(node, c_puct=c_puct)
+        selected = select_puct_child(node, c_puct=c_puct)
         if selected is None:
             return None
         move, node = selected
         board.push_usi(move)
         path.append(node)
     return SelectedSimulation(path=path, board=board, node=node)
-
-
-def _select_child_node(node: MctsNode, *, c_puct: float) -> tuple[str, MctsNode] | None:
-    parent_visits = max(1, node.visit_count)
-
-    def score(item: tuple[str, MctsNode]) -> tuple[float, str]:
-        move, child = item
-        exploration = c_puct * child.prior * math.sqrt(parent_visits) / (1 + child.visit_count)
-        return -child.value_mean + exploration, move
-
-    candidates = [item for item in node.children.items() if not item[1].pending]
-    if not candidates:
-        return None
-    return max(candidates, key=score)
 
 
 def _expand_node_with_evaluation(node: MctsNode, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:
