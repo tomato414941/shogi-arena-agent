@@ -15,31 +15,34 @@ from shogi_arena_agent.usi_process import UsiProcess
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Analyze shogi positions with YaneuraOu and write engine analysis JSONL.")
+    parser = argparse.ArgumentParser(description="Analyze shogi positions with a USI engine and write engine analysis JSONL.")
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--yaneuraou", required=True)
-    parser.add_argument("--engine-go-command", default="go nodes 30")
+    parser.add_argument("--usi-command", required=True)
+    parser.add_argument("--usi-name", default="usi-engine")
+    parser.add_argument("--usi-go-command", default="go nodes 30")
     parser.add_argument("--multipv", type=int, default=3)
     parser.add_argument("--read-timeout-seconds", type=float, default=10.0)
     args = parser.parse_args(argv)
 
-    result = analyze_shogi_positions_with_yaneuraou(
+    result = analyze_shogi_positions_with_usi_engine(
         input_path=args.input,
         output_path=args.out,
-        yaneuraou=args.yaneuraou,
-        go_command=args.engine_go_command,
+        usi_command=args.usi_command,
+        usi_name=args.usi_name,
+        go_command=args.usi_go_command,
         multipv=args.multipv,
         read_timeout_seconds=args.read_timeout_seconds,
     )
     print(json.dumps(result, indent=2))
 
 
-def analyze_shogi_positions_with_yaneuraou(
+def analyze_shogi_positions_with_usi_engine(
     *,
     input_path: Path,
     output_path: Path,
-    yaneuraou: str,
+    usi_command: str,
+    usi_name: str,
     go_command: str,
     multipv: int,
     read_timeout_seconds: float = 10.0,
@@ -48,9 +51,9 @@ def analyze_shogi_positions_with_yaneuraou(
     positions = shogi_analysis_positions_from_game_records(records)
     engine = ShogiActorSpec(
         kind="usi_engine",
-        name="yaneuraou",
+        name=usi_name,
         settings={
-            "command": yaneuraou,
+            "command": usi_command,
             "go_command": go_command,
             "multipv": multipv,
         },
@@ -58,7 +61,7 @@ def analyze_shogi_positions_with_yaneuraou(
     analyses = []
 
     with UsiProcess(
-        command=[yaneuraou],
+        command=[usi_command],
         go_command=go_command,
         read_timeout_seconds=read_timeout_seconds,
     ) as session:
@@ -73,8 +76,8 @@ def analyze_shogi_positions_with_yaneuraou(
         "game_count": len(records),
         "position_count": len(positions),
         "analysis_count": len(analyses),
-        "engine": "yaneuraou",
-        "engine_go_command": go_command,
+        "engine": usi_name,
+        "usi_go_command": go_command,
         "multipv": multipv,
     }
 

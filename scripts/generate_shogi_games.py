@@ -88,11 +88,12 @@ def _player_config_from_args(args: argparse.Namespace, prefix: str) -> ShogiPlay
         mcts_root_reuse=getattr(args, f"{prefix}_mcts_root_reuse"),
         device=getattr(args, f"{prefix}_device"),
         board_backend=getattr(args, f"{prefix}_board_backend"),
-        yaneuraou_command=getattr(args, f"{prefix}_yaneuraou_command"),
-        yaneuraou_go_command=getattr(args, f"{prefix}_yaneuraou_go_command"),
-        yaneuraou_read_timeout_seconds=getattr(args, f"{prefix}_yaneuraou_read_timeout_seconds"),
-        yaneuraou_policy_target_multipv=getattr(args, f"{prefix}_yaneuraou_policy_target_multipv"),
-        yaneuraou_policy_target_temperature_cp=getattr(args, f"{prefix}_yaneuraou_policy_target_temperature_cp"),
+        usi_command=getattr(args, f"{prefix}_usi_command"),
+        usi_option=tuple(getattr(args, f"{prefix}_usi_option")),
+        usi_go_command=getattr(args, f"{prefix}_usi_go_command"),
+        usi_read_timeout_seconds=getattr(args, f"{prefix}_usi_read_timeout_seconds"),
+        usi_policy_target_multipv=getattr(args, f"{prefix}_usi_policy_target_multipv"),
+        usi_policy_target_temperature_cp=getattr(args, f"{prefix}_usi_policy_target_temperature_cp"),
         seed=args.seed,
     )
 
@@ -191,14 +192,19 @@ def _player_command_args(args: argparse.Namespace, prefix: str) -> list[str]:
         "mcts_root_reuse",
         "device",
         "board_backend",
-        "yaneuraou_command",
-        "yaneuraou_go_command",
-        "yaneuraou_read_timeout_seconds",
-        "yaneuraou_policy_target_multipv",
-        "yaneuraou_policy_target_temperature_cp",
+        "usi_command",
+        "usi_option",
+        "usi_go_command",
+        "usi_read_timeout_seconds",
+        "usi_policy_target_multipv",
+        "usi_policy_target_temperature_cp",
     ):
         value = getattr(args, f"{prefix}_{name}")
         if value is None:
+            continue
+        if isinstance(value, list | tuple):
+            for item in value:
+                command.extend([f"--{prefix}-{name.replace('_', '-')}", str(item)])
             continue
         if isinstance(value, bool):
             if value:

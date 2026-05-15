@@ -63,9 +63,11 @@ class AnalyzeShogiPositionsScriptTest(unittest.TestCase):
                         str(input_path),
                         "--out",
                         str(output_path),
-                        "--yaneuraou",
+                        "--usi-command",
                         "engine",
-                        "--engine-go-command",
+                        "--usi-name",
+                        "analysis-engine",
+                        "--usi-go-command",
                         "go nodes 30",
                         "--multipv",
                         "2",
@@ -77,7 +79,7 @@ class AnalyzeShogiPositionsScriptTest(unittest.TestCase):
 
         self.assertEqual(summary["analysis_count"], 1)
         self.assertEqual(summary["position_count"], 1)
-        self.assertEqual(analyses[0].engine.name, "yaneuraou")
+        self.assertEqual(analyses[0].engine.name, "analysis-engine")
         self.assertEqual(analyses[0].engine.settings["multipv"], 2)
         self.assertEqual(analyses[0].usi_info_lines[0], "info multipv 1 score cp 100 pv 7g7f")
         self.assertEqual(analyses[0].usi_info_lines[1], "info multipv 2 score cp 0 pv 2g2f")
@@ -107,8 +109,8 @@ def _record() -> ShogiGameRecord:
 
 
 def _load_script_module() -> ModuleType:
-    script_path = Path(__file__).resolve().parents[1] / "scripts" / "analyze_shogi_positions_with_yaneuraou.py"
-    spec = importlib.util.spec_from_file_location("analyze_shogi_positions_with_yaneuraou", script_path)
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "analyze_shogi_positions_with_usi_engine.py"
+    spec = importlib.util.spec_from_file_location("analyze_shogi_positions_with_usi_engine", script_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"failed to load {script_path}")
     module = importlib.util.module_from_spec(spec)

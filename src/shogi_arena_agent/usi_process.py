@@ -6,7 +6,7 @@ import queue
 import threading
 from dataclasses import dataclass
 from types import TracebackType
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -23,10 +23,12 @@ class UsiProcess:
         self,
         command: Sequence[str] | None = None,
         *,
+        options: Mapping[str, str] | None = None,
         go_command: str = "go btime 0 wtime 0",
         read_timeout_seconds: float = 5.0,
     ) -> None:
         self.command = list(command or [sys.executable, "-m", "shogi_arena_agent"])
+        self.options = dict(options or {})
         if not go_command.startswith("go"):
             raise ValueError("go_command must start with 'go'")
         self.go_command = go_command
@@ -62,6 +64,8 @@ class UsiProcess:
         self._stdout_thread.start()
         self._send("usi")
         self._read_until("usiok")
+        for name, value in self.options.items():
+            self.setoption(name=name, value=value)
         self._send("isready")
         self._read_until("readyok")
 

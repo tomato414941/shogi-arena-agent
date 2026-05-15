@@ -44,11 +44,12 @@ class ShogiPlayerGenerationConfig:
     mcts_root_reuse: bool = False
     device: str = "cpu"
     board_backend: str = "python-shogi"
-    yaneuraou_command: str | None = None
-    yaneuraou_go_command: str = "go nodes 1"
-    yaneuraou_read_timeout_seconds: float = 10.0
-    yaneuraou_policy_target_multipv: int | None = None
-    yaneuraou_policy_target_temperature_cp: float = 100.0
+    usi_command: str | None = None
+    usi_option: tuple[str, ...] = ()
+    usi_go_command: str = "go nodes 1"
+    usi_read_timeout_seconds: float = 10.0
+    usi_policy_target_multipv: int | None = None
+    usi_policy_target_temperature_cp: float = 100.0
     seed: int | None = None
 
 
@@ -467,10 +468,11 @@ def _player_args(player: ShogiPlayerGenerationConfig, *, prefix: str) -> object:
             f"{prefix}_mcts_root_reuse": player.mcts_root_reuse,
             f"{prefix}_device": player.device,
             f"{prefix}_board_backend": player.board_backend,
-            f"{prefix}_yaneuraou_command": player.yaneuraou_command,
-            f"{prefix}_yaneuraou_go_command": player.yaneuraou_go_command,
-            f"{prefix}_yaneuraou_read_timeout_seconds": player.yaneuraou_read_timeout_seconds,
-            f"{prefix}_yaneuraou_policy_target_multipv": player.yaneuraou_policy_target_multipv,
-            f"{prefix}_yaneuraou_policy_target_temperature_cp": player.yaneuraou_policy_target_temperature_cp,
+            f"{prefix}_usi_command": player.usi_command,
+            f"{prefix}_usi_option": list(player.usi_option),
+            f"{prefix}_usi_go_command": player.usi_go_command,
+            f"{prefix}_usi_read_timeout_seconds": player.usi_read_timeout_seconds,
+            f"{prefix}_usi_policy_target_multipv": player.usi_policy_target_multipv,
+            f"{prefix}_usi_policy_target_temperature_cp": player.usi_policy_target_temperature_cp,
         }
     )

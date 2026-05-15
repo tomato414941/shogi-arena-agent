@@ -89,13 +89,13 @@ class ShogiGameTest(unittest.TestCase):
     def test_records_explicit_actor_specs(self) -> None:
         result = play_shogi_game(
             black_actor=ShogiActorSpec(kind="checkpoint", name="model-a", settings={"checkpoint": "a.pt"}),
-            white_actor=ShogiActorSpec(kind="yaneuraou", name="yaneuraou", settings={"go_command": "go nodes 10"}),
+            white_actor=ShogiActorSpec(kind="usi_engine", name="usi-engine", settings={"go_command": "go nodes 10"}),
             max_plies=2,
         )
 
         self.assertEqual(result.black_actor.kind, "checkpoint")
         self.assertEqual(result.black_actor.settings["checkpoint"], "a.pt")
-        self.assertEqual(result.white_actor.kind, "yaneuraou")
+        self.assertEqual(result.white_actor.kind, "usi_engine")
         self.assertEqual(result.white_actor.settings["go_command"], "go nodes 10")
 
     def test_records_raw_decision_usi_info_lines(self) -> None:

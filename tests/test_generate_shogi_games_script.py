@@ -123,14 +123,14 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertTrue(records[0].black_actor.settings["root_reuse"])
         self.assertFalse(records[0].white_actor.settings["root_reuse"])
 
-    def test_yaneuraou_requires_command(self) -> None:
+    def test_usi_requires_command(self) -> None:
         module = _load_script_module()
 
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             module.main(
                 [
                     "--black-kind",
-                    "yaneuraou",
+                    "usi",
                     "--white-kind",
                     "deterministic_legal",
                     "--out",
@@ -467,7 +467,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(summary["generation_worker_processes"], 2)
         self.assertEqual(len(summary["shards"]), 2)
 
-    def test_yaneuraou_fixed_side_writes_game_records(self) -> None:
+    def test_usi_fixed_side_writes_game_records(self) -> None:
         module = _load_script_module()
 
         class FakeUsiProcess:
@@ -497,12 +497,12 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                 module.main(
                     [
                         "--black-kind",
-                        "yaneuraou",
-                        "--black-yaneuraou-command",
+                        "usi",
+                        "--black-usi-command",
                         "engine",
                         "--white-kind",
-                        "yaneuraou",
-                        "--white-yaneuraou-command",
+                        "usi",
+                        "--white-usi-command",
                         "engine",
                         "--games",
                         "3",
@@ -517,8 +517,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             summary = json.loads(stdout.getvalue())
 
         self.assertEqual(len(records), 3)
-        self.assertEqual(records[0].black_actor.kind, "yaneuraou")
-        self.assertEqual(records[0].white_actor.kind, "yaneuraou")
+        self.assertEqual(records[0].black_actor.kind, "usi_engine")
+        self.assertEqual(records[0].white_actor.kind, "usi_engine")
         self.assertEqual(summary["game_count"], 3)
         self.assertEqual(FakeUsiProcess.enter_count, 2)
 

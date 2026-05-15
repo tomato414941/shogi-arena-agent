@@ -134,12 +134,12 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
                 module.main(
                     [
                         "--player-kind",
-                        "yaneuraou",
-                        "--player-yaneuraou-command",
+                        "usi",
+                        "--player-usi-command",
                         "engine",
                         "--opponent-kind",
-                        "yaneuraou",
-                        "--opponent-yaneuraou-command",
+                        "usi",
+                        "--opponent-usi-command",
                         "engine",
                         "--games",
                         "4",

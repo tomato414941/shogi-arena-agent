@@ -166,10 +166,10 @@ trap cleanup_gpu_sampler EXIT
   --player-mcts-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
   --player-device cuda \\
   --player-board-backend '$BOARD_BACKEND' \\
-  --opponent-kind yaneuraou \\
-  --opponent-yaneuraou-command /root/YaneuraOu/source/YaneuraOu-runpod \\
-  --opponent-yaneuraou-go-command '$YANEURAOU_GO_COMMAND' \\
-  --opponent-yaneuraou-read-timeout-seconds '$YANEURAOU_READ_TIMEOUT_SECONDS' \\
+  --opponent-kind usi \\
+  --opponent-usi-command /root/YaneuraOu/source/YaneuraOu-runpod \\
+  --opponent-usi-go-command '$YANEURAOU_GO_COMMAND' \\
+  --opponent-usi-read-timeout-seconds '$YANEURAOU_READ_TIMEOUT_SECONDS' \\
   --games '$GAMES' \\
   --max-plies '$MAX_PLIES' \\
   --out '$REMOTE_GAMES' \\

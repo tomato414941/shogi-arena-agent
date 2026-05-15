@@ -23,7 +23,7 @@ from shogi_arena_agent.shogi_game import ShogiActorSpec, ShogiPlayer
 from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
-PLAYER_KINDS = ("checkpoint", "yaneuraou", "deterministic_legal")
+PLAYER_KINDS = ("checkpoint", "usi", "deterministic_legal")
 MOVE_SELECTION_PROFILES = ("evaluation", "self-play")
 
 
@@ -45,19 +45,20 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-mcts-root-reuse", action="store_true")
     parser.add_argument(f"--{prefix}-device", default="cpu")
     parser.add_argument(f"--{prefix}-board-backend", choices=BOARD_BACKENDS, default="python-shogi")
-    parser.add_argument(f"--{prefix}-yaneuraou-command")
-    parser.add_argument(f"--{prefix}-yaneuraou-go-command", default="go nodes 1")
-    parser.add_argument(f"--{prefix}-yaneuraou-read-timeout-seconds", type=float, default=10.0)
-    parser.add_argument(f"--{prefix}-yaneuraou-policy-target-multipv", type=int)
-    parser.add_argument(f"--{prefix}-yaneuraou-policy-target-temperature-cp", type=float, default=100.0)
+    parser.add_argument(f"--{prefix}-usi-command")
+    parser.add_argument(f"--{prefix}-usi-option", action="append", default=[])
+    parser.add_argument(f"--{prefix}-usi-go-command", default="go nodes 1")
+    parser.add_argument(f"--{prefix}-usi-read-timeout-seconds", type=float, default=10.0)
+    parser.add_argument(f"--{prefix}-usi-policy-target-multipv", type=int)
+    parser.add_argument(f"--{prefix}-usi-policy-target-temperature-cp", type=float, default=100.0)
 
 
 def validate_player_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace, prefix: str) -> None:
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint" and not _arg(args, prefix, "checkpoint"):
         parser.error(f"--{prefix}-checkpoint is required when --{prefix}-kind checkpoint")
-    if kind == "yaneuraou" and not _arg(args, prefix, "yaneuraou_command"):
-        parser.error(f"--{prefix}-yaneuraou-command is required when --{prefix}-kind yaneuraou")
+    if kind == "usi" and not _arg(args, prefix, "usi_command"):
+        parser.error(f"--{prefix}-usi-command is required when --{prefix}-kind usi")
 
 
 def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> BuiltPlayer | None:
@@ -125,16 +126,18 @@ def player_context(args: argparse.Namespace, prefix: str, *, name: str) -> Itera
         yield static_player
         return
 
-    command = _arg(args, prefix, "yaneuraou_command")
-    go_command = _arg(args, prefix, "yaneuraou_go_command")
-    read_timeout_seconds = _arg(args, prefix, "yaneuraou_read_timeout_seconds")
-    multipv = _arg(args, prefix, "yaneuraou_policy_target_multipv")
-    temperature_cp = _arg(args, prefix, "yaneuraou_policy_target_temperature_cp")
+    command = _arg(args, prefix, "usi_command")
+    options = _parse_usi_options(_arg(args, prefix, "usi_option"))
+    go_command = _arg(args, prefix, "usi_go_command")
+    read_timeout_seconds = _arg(args, prefix, "usi_read_timeout_seconds")
+    multipv = _arg(args, prefix, "usi_policy_target_multipv")
+    temperature_cp = _arg(args, prefix, "usi_policy_target_temperature_cp")
     actor = ShogiActorSpec(
-        kind="yaneuraou",
+        kind="usi_engine",
         name=name,
         settings={
             "command": command,
+            "options": options,
             "go_command": go_command,
             "read_timeout_seconds": read_timeout_seconds,
             "policy_target_multipv": multipv,
@@ -143,6 +146,7 @@ def player_context(args: argparse.Namespace, prefix: str, *, name: str) -> Itera
     )
     with UsiProcess(
         command=[command],
+        options=options,
         go_command=go_command,
         read_timeout_seconds=read_timeout_seconds,
     ) as engine:
@@ -177,3 +181,16 @@ def _move_selection_config(profile: str):
 
 def _arg(args: argparse.Namespace, prefix: str, name: str) -> Any:
     return getattr(args, f"{prefix}_{name}")
+
+
+def _parse_usi_options(values: list[str] | None) -> dict[str, str]:
+    options: dict[str, str] = {}
+    for value in values or []:
+        if "=" not in value:
+            raise ValueError("USI option must be NAME=VALUE")
+        name, option_value = value.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise ValueError("USI option name must not be empty")
+        options[name] = option_value.strip()
+    return options

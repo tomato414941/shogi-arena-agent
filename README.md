@@ -141,9 +141,9 @@ after preparing a YaneuraOu executable:
 ```sh
 uv run python scripts/evaluate_shogi_players.py \
   --player-kind deterministic_legal \
-  --opponent-kind yaneuraou \
-  --opponent-yaneuraou-command /path/to/YaneuraOu \
-  --opponent-yaneuraou-go-command "go nodes 1" \
+  --opponent-kind usi \
+  --opponent-usi-command /path/to/YaneuraOu \
+  --opponent-usi-go-command "go nodes 1" \
   --games 2 \
   --max-plies 320 \
   --out runs/shogi/evaluation.jsonl
@@ -157,9 +157,9 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --black-checkpoint /path/to/checkpoint.pt \
   --black-move-selector mcts \
   --black-mcts-simulations 16 \
-  --white-kind yaneuraou \
-  --white-yaneuraou-command /path/to/YaneuraOu \
-  --white-yaneuraou-go-command "go nodes 1" \
+  --white-kind usi \
+  --white-usi-command /path/to/YaneuraOu \
+  --white-usi-go-command "go nodes 1" \
   --games 2 \
   --max-plies 320 \
   --out runs/shogi/games.jsonl
@@ -184,19 +184,19 @@ Generation runtime settings such as `--concurrent-games-per-process` and
 `--generation-worker-processes` are documented in
 [`docs/shogi-generation.md`](docs/shogi-generation.md).
 
-YaneuraOu self-play also writes the same record format:
+USI engine self-play also writes the same record format:
 
 ```sh
 uv run --extra model python scripts/generate_shogi_games.py \
-  --black-kind yaneuraou \
-  --black-yaneuraou-command /path/to/YaneuraOu \
-  --black-yaneuraou-go-command "go nodes 1" \
-  --white-kind yaneuraou \
-  --white-yaneuraou-command /path/to/YaneuraOu \
-  --white-yaneuraou-go-command "go nodes 1" \
+  --black-kind usi \
+  --black-usi-command /path/to/YaneuraOu \
+  --black-usi-go-command "go nodes 1" \
+  --white-kind usi \
+  --white-usi-command /path/to/YaneuraOu \
+  --white-usi-go-command "go nodes 1" \
   --games 2 \
   --max-plies 320 \
-  --out runs/shogi/yaneuraou-self.jsonl
+  --out runs/shogi/usi-engine-self.jsonl
 ```
 
 Local smoke tests can use a material-evaluation YaneuraOu build.
