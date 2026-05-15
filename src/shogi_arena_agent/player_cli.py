@@ -181,7 +181,7 @@ def _move_selection_config(profile: str):
 
 
 def _arg(args: argparse.Namespace, prefix: str, name: str) -> Any:
-    return getattr(args, f"{prefix}_{name}")
+    return getattr(args, f"{prefix.replace('-', '_')}_{name}")
 
 
 def _parse_usi_options(values: list[str] | None) -> dict[str, str]:

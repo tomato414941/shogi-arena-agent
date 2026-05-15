@@ -158,18 +158,18 @@ cleanup_gpu_sampler() {
 }
 trap cleanup_gpu_sampler EXIT
 /root/intrep/.venv/bin/python scripts/evaluate_shogi_players.py \\
-  --player-kind checkpoint \\
-  --player-checkpoint '$REMOTE_CHECKPOINT' \\
-  --player-move-selector mcts \\
-  --player-mcts-simulations '$MCTS_SIMULATIONS' \\
-  --player-mcts-evaluation-batch-size '$MCTS_BATCH_SIZE' \\
-  --player-mcts-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
-  --player-device cuda \\
-  --player-board-backend '$BOARD_BACKEND' \\
-  --opponent-kind usi \\
-  --opponent-usi-command /root/YaneuraOu/source/YaneuraOu-runpod \\
-  --opponent-usi-go-command '$YANEURAOU_GO_COMMAND' \\
-  --opponent-usi-read-timeout-seconds '$YANEURAOU_READ_TIMEOUT_SECONDS' \\
+  --player-a-kind checkpoint \\
+  --player-a-checkpoint '$REMOTE_CHECKPOINT' \\
+  --player-a-move-selector mcts \\
+  --player-a-mcts-simulations '$MCTS_SIMULATIONS' \\
+  --player-a-mcts-evaluation-batch-size '$MCTS_BATCH_SIZE' \\
+  --player-a-mcts-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
+  --player-a-device cuda \\
+  --player-a-board-backend '$BOARD_BACKEND' \\
+  --player-b-kind usi \\
+  --player-b-usi-command /root/YaneuraOu/source/YaneuraOu-runpod \\
+  --player-b-usi-go-command '$YANEURAOU_GO_COMMAND' \\
+  --player-b-usi-read-timeout-seconds '$YANEURAOU_READ_TIMEOUT_SECONDS' \\
   --games '$GAMES' \\
   --max-plies '$MAX_PLIES' \\
   --out '$REMOTE_GAMES' \\

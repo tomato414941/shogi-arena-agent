@@ -31,9 +31,9 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
             with contextlib.redirect_stdout(stdout):
                 module.main(
                     [
-                        "--player-kind",
+                        "--player-a-kind",
                         "deterministic_legal",
-                        "--opponent-kind",
+                        "--player-b-kind",
                         "deterministic_legal",
                         "--games",
                         "2",
@@ -48,13 +48,13 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
             summary = json.loads(stdout.getvalue())
 
         self.assertEqual(len(records), 2)
-        self.assertEqual(records[0].black_actor.name, "player")
-        self.assertEqual(records[0].white_actor.name, "opponent")
-        self.assertEqual(records[1].black_actor.name, "opponent")
-        self.assertEqual(records[1].white_actor.name, "player")
+        self.assertEqual(records[0].black_actor.name, "player_a")
+        self.assertEqual(records[0].white_actor.name, "player_b")
+        self.assertEqual(records[1].black_actor.name, "player_b")
+        self.assertEqual(records[1].white_actor.name, "player_a")
         self.assertEqual(summary["game_count"], 2)
-        self.assertEqual(summary["black_game_count"], 1)
-        self.assertEqual(summary["white_game_count"], 1)
+        self.assertEqual(summary["player_a_black_game_count"], 1)
+        self.assertEqual(summary["player_a_white_game_count"], 1)
 
     def test_summarizes_in_process_mcts_performance(self) -> None:
         module = _load_script_module()
@@ -133,13 +133,13 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
             with patch("shogi_arena_agent.player_cli.UsiProcess", FakeUsiProcess), contextlib.redirect_stdout(io.StringIO()):
                 module.main(
                     [
-                        "--player-kind",
+                        "--player-a-kind",
                         "usi",
-                        "--player-usi-command",
+                        "--player-a-usi-command",
                         "engine",
-                        "--opponent-kind",
+                        "--player-b-kind",
                         "usi",
-                        "--opponent-usi-command",
+                        "--player-b-usi-command",
                         "engine",
                         "--games",
                         "4",

@@ -19,8 +19,8 @@ DEFAULT_MAX_PLIES = 320
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Evaluate two shogi players with alternating sides.")
-    add_player_arguments(parser, "player")
-    add_player_arguments(parser, "opponent")
+    add_player_arguments(parser, "player-a")
+    add_player_arguments(parser, "player-b")
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--games", type=int, default=2)
     # Computer-shogi evaluation should not end as a short artificial draw; use
@@ -28,50 +28,50 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--max-plies", type=int, default=DEFAULT_MAX_PLIES)
     args = parser.parse_args(argv)
 
-    validate_player_arguments(parser, args, "player")
-    validate_player_arguments(parser, args, "opponent")
+    validate_player_arguments(parser, args, "player-a")
+    validate_player_arguments(parser, args, "player-b")
     if args.games <= 0:
         parser.error("--games must be positive")
     _warn_short_max_plies(args.max_plies)
 
-    results, player_sides = _evaluate(args)
-    evaluation = summarize_match_results(results, player_sides)
+    results, player_a_sides = _evaluate(args)
+    evaluation = summarize_match_results(results, player_a_sides)
     save_shogi_game_records_jsonl(evaluation.results, Path(args.out))
     print(json.dumps(_evaluation_summary(evaluation), indent=2))
 
 
 def _evaluate(args: argparse.Namespace) -> tuple[list[ShogiGameRecord], list[str]]:
     results: list[ShogiGameRecord] = []
-    player_sides: list[str] = []
-    player_static = build_static_player(args, "player", name="player")
-    opponent_static = build_static_player(args, "opponent", name="opponent")
+    player_a_sides: list[str] = []
+    player_a_static = build_static_player(args, "player-a", name="player_a")
+    player_b_static = build_static_player(args, "player-b", name="player_b")
     with ExitStack() as stack:
-        player = stack.enter_context(_player_context(args, "player", name="player", static_player=player_static))
-        opponent = stack.enter_context(_player_context(args, "opponent", name="opponent", static_player=opponent_static))
+        player_a = stack.enter_context(_player_context(args, "player-a", name="player_a", static_player=player_a_static))
+        player_b = stack.enter_context(_player_context(args, "player-b", name="player_b", static_player=player_b_static))
         for game_index in range(args.games):
             if game_index % 2 == 0:
                 results.append(
                     play_shogi_game(
-                        black=player.player,
-                        white=opponent.player,
-                        black_actor=player.actor,
-                        white_actor=opponent.actor,
+                        black=player_a.player,
+                        white=player_b.player,
+                        black_actor=player_a.actor,
+                        white_actor=player_b.actor,
                         max_plies=args.max_plies,
                     )
                 )
-                player_sides.append("black")
+                player_a_sides.append("black")
             else:
                 results.append(
                     play_shogi_game(
-                        black=opponent.player,
-                        white=player.player,
-                        black_actor=opponent.actor,
-                        white_actor=player.actor,
+                        black=player_b.player,
+                        white=player_a.player,
+                        black_actor=player_b.actor,
+                        white_actor=player_a.actor,
                         max_plies=args.max_plies,
                     )
                 )
-                player_sides.append("white")
-    return results, player_sides
+                player_a_sides.append("white")
+    return results, player_a_sides
 
 
 def _player_context(
