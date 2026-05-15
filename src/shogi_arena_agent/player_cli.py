@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterator
@@ -137,7 +138,7 @@ def player_context(args: argparse.Namespace, prefix: str, *, name: str) -> Itera
         name=name,
         settings={
             "command": command,
-            "options": options,
+            "usi_options_json": json.dumps(options, sort_keys=True),
             "go_command": go_command,
             "read_timeout_seconds": read_timeout_seconds,
             "policy_target_multipv": multipv,

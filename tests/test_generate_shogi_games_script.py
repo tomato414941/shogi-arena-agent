@@ -519,6 +519,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(records), 3)
         self.assertEqual(records[0].black_actor.kind, "usi_engine")
         self.assertEqual(records[0].white_actor.kind, "usi_engine")
+        self.assertEqual(records[0].black_actor.settings["usi_options_json"], "{}")
+        self.assertNotIn("options", records[0].black_actor.settings)
         self.assertEqual(summary["game_count"], 3)
         self.assertEqual(FakeUsiProcess.enter_count, 2)
 
