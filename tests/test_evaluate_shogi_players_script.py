@@ -152,6 +152,39 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
 
         self.assertEqual(FakeUsiProcess.enter_count, 2)
 
+    def test_game_records_are_the_match_evidence(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                module.main(
+                    [
+                        "--player-a-kind",
+                        "deterministic_legal",
+                        "--player-b-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "2",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+            summary = json.loads(stdout.getvalue())
+
+        self.assertEqual(summary["game_count"], len(records))
+        self.assertEqual(records[0].black_actor.name, "player_a")
+        self.assertEqual(records[0].white_actor.name, "player_b")
+        self.assertEqual(records[1].black_actor.name, "player_b")
+        self.assertEqual(records[1].white_actor.name, "player_a")
+        self.assertEqual(sum(1 for record in records if record.winner is None), summary["draws"])
+
 
 def _load_script_module() -> ModuleType:
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "evaluate_shogi_players.py"
