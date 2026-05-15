@@ -33,10 +33,14 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--black-checkpoint",
                         "black.pt",
+                        "--black-checkpoint-id",
+                        "black-model",
                         "--white-kind",
                         "checkpoint",
                         "--white-checkpoint",
                         "white.pt",
+                        "--white-checkpoint-id",
+                        "white-model",
                         "--games",
                         "1",
                         "--max-plies",
@@ -52,12 +56,20 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].black_actor.settings["checkpoint"], "black.pt")
         self.assertEqual(records[0].white_actor.settings["checkpoint"], "white.pt")
+        self.assertEqual(records[0].black_actor.settings["checkpoint_id"], "black-model")
+        self.assertEqual(records[0].white_actor.settings["checkpoint_id"], "white-model")
+        self.assertEqual(records[0].black_actor.settings["checkpoint_path"], "black.pt")
+        self.assertEqual(records[0].white_actor.settings["checkpoint_path"], "white.pt")
         self.assertEqual(records[0].black_actor.settings["move_selector"], "mcts")
         self.assertEqual(records[0].white_actor.settings["move_selector"], "mcts")
         self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "evaluation")
         self.assertEqual(records[0].white_actor.settings["move_selection_profile"], "evaluation")
         self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 1)
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 1)
+        self.assertEqual(records[0].black_actor.settings["mcts_simulations_per_move"], 16)
+        self.assertEqual(records[0].white_actor.settings["mcts_simulations_per_move"], 16)
+        self.assertEqual(records[0].black_actor.settings["nn_leaf_eval_batch_limit"], 1)
+        self.assertEqual(records[0].white_actor.settings["nn_leaf_eval_batch_limit"], 1)
         self.assertIsNone(records[0].black_actor.settings["move_time_limit_sec"])
         self.assertIsNone(records[0].white_actor.settings["move_time_limit_sec"])
         self.assertFalse(records[0].black_actor.settings["root_reuse"])

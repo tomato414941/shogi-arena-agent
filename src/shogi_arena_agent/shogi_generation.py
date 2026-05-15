@@ -35,6 +35,7 @@ from shogi_arena_agent.usi import UsiPosition
 class ShogiPlayerGenerationConfig:
     kind: str
     checkpoint: str | None = None
+    checkpoint_id: str | None = None
     move_selection_profile: str = "evaluation"
     move_selector: str = "mcts"
     mcts_simulations: int = 16
@@ -317,8 +318,12 @@ def _checkpoint_actor(
         name=name,
         settings={
             "checkpoint": player.checkpoint,
+            "checkpoint_id": player.checkpoint_id,
+            "checkpoint_path": player.checkpoint,
             "move_selection_profile": player.move_selection_profile,
             "move_selector": player.move_selector,
+            "mcts_simulations_per_move": player.mcts_simulations,
+            "nn_leaf_eval_batch_limit": player.mcts_evaluation_batch_size,
             "simulations": player.mcts_simulations,
             "evaluation_batch_size": player.mcts_evaluation_batch_size,
             "move_time_limit_sec": player.mcts_move_time_limit_sec,
@@ -453,6 +458,7 @@ def _player_args(player: ShogiPlayerGenerationConfig, *, prefix: str) -> object:
         **{
             f"{prefix}_kind": player.kind,
             f"{prefix}_checkpoint": player.checkpoint,
+            f"{prefix}_checkpoint_id": player.checkpoint_id,
             f"{prefix}_move_selection_profile": player.move_selection_profile,
             f"{prefix}_move_selector": player.move_selector,
             f"{prefix}_mcts_simulations": player.mcts_simulations,

@@ -79,6 +79,7 @@ def _player_config_from_args(args: argparse.Namespace, prefix: str) -> ShogiPlay
     return ShogiPlayerGenerationConfig(
         kind=getattr(args, f"{prefix}_kind"),
         checkpoint=getattr(args, f"{prefix}_checkpoint"),
+        checkpoint_id=getattr(args, f"{prefix}_checkpoint_id"),
         move_selection_profile=getattr(args, f"{prefix}_move_selection_profile"),
         move_selector=getattr(args, f"{prefix}_move_selector"),
         mcts_simulations=getattr(args, f"{prefix}_mcts_simulations"),
@@ -181,6 +182,7 @@ def _player_command_args(args: argparse.Namespace, prefix: str) -> list[str]:
     ]
     for name in (
         "checkpoint",
+        "checkpoint_id",
         "move_selection_profile",
         "move_selector",
         "mcts_simulations",

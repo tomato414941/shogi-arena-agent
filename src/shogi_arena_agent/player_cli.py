@@ -36,6 +36,7 @@ class BuiltPlayer:
 def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-kind", choices=PLAYER_KINDS, required=True)
     parser.add_argument(f"--{prefix}-checkpoint")
+    parser.add_argument(f"--{prefix}-checkpoint-id")
     parser.add_argument(f"--{prefix}-move-selection-profile", choices=MOVE_SELECTION_PROFILES, default="evaluation")
     parser.add_argument(f"--{prefix}-move-selector", choices=("direct", "mcts"), default="mcts")
     parser.add_argument(f"--{prefix}-mcts-simulations", type=int, default=16)
@@ -63,6 +64,7 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint":
         checkpoint = _arg(args, prefix, "checkpoint")
+        checkpoint_id = _arg(args, prefix, "checkpoint_id")
         profile = _arg(args, prefix, "move_selection_profile")
         move_selector = _arg(args, prefix, "move_selector")
         simulations = _arg(args, prefix, "mcts_simulations")
@@ -93,8 +95,12 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
                 name=name,
                 settings={
                     "checkpoint": checkpoint,
+                    "checkpoint_id": checkpoint_id,
+                    "checkpoint_path": checkpoint,
                     "move_selection_profile": profile,
                     "move_selector": move_selector,
+                    "mcts_simulations_per_move": mcts_config.simulation_count if move_selector == "mcts" else None,
+                    "nn_leaf_eval_batch_limit": mcts_config.evaluation_batch_size if move_selector == "mcts" else None,
                     "simulations": mcts_config.simulation_count if move_selector == "mcts" else None,
                     "evaluation_batch_size": mcts_config.evaluation_batch_size if move_selector == "mcts" else None,
                     "move_time_limit_sec": mcts_config.move_time_limit_sec if move_selector == "mcts" else None,
