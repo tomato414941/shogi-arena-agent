@@ -46,5 +46,15 @@ def evaluation_move_selection_config() -> MoveSelectionConfig:
     return MoveSelectionConfig(mode="deterministic")
 
 
-def self_play_move_selection_config(*, seed: int | None = None) -> MoveSelectionConfig:
-    return MoveSelectionConfig(mode="visit_sample", temperature=1.0, temperature_plies=40, seed=seed)
+def self_play_move_selection_config(
+    *,
+    seed: int | None = None,
+    temperature: float = 1.0,
+    temperature_plies: int = 40,
+) -> MoveSelectionConfig:
+    return MoveSelectionConfig(
+        mode="visit_sample",
+        temperature=temperature,
+        temperature_plies=temperature_plies,
+        seed=seed,
+    )

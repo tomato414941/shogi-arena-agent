@@ -94,6 +94,12 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "black.pt",
                         "--black-mcts-evaluation-batch-size",
                         "8",
+                        "--black-move-selection-profile",
+                        "self-play",
+                        "--black-move-selection-temperature",
+                        "0.75",
+                        "--black-move-selection-temperature-plies",
+                        "12",
                         "--black-mcts-move-time-limit-sec",
                         "8.5",
                         "--black-mcts-root-reuse",
@@ -118,6 +124,9 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
         self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 8)
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 16)
+        self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "self-play")
+        self.assertEqual(records[0].black_actor.settings["move_selection_temperature"], 0.75)
+        self.assertEqual(records[0].black_actor.settings["move_selection_temperature_plies"], 12)
         self.assertEqual(records[0].black_actor.settings["move_time_limit_sec"], 8.5)
         self.assertEqual(records[0].white_actor.settings["move_time_limit_sec"], 9.0)
         self.assertTrue(records[0].black_actor.settings["root_reuse"])

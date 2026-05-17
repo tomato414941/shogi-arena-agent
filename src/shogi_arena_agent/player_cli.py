@@ -39,6 +39,8 @@ class CheckpointPolicyPlayerSpec:
     checkpoint: str
     checkpoint_id: str | None = None
     move_selection_profile: str = "evaluation"
+    move_selection_temperature: float | None = None
+    move_selection_temperature_plies: int | None = None
     move_selector: str = "mcts"
     mcts_simulations: int = 16
     mcts_evaluation_batch_size: int = 1
@@ -72,6 +74,8 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-checkpoint")
     parser.add_argument(f"--{prefix}-checkpoint-id")
     parser.add_argument(f"--{prefix}-move-selection-profile", choices=MOVE_SELECTION_PROFILES, default="evaluation")
+    parser.add_argument(f"--{prefix}-move-selection-temperature", type=float)
+    parser.add_argument(f"--{prefix}-move-selection-temperature-plies", type=int)
     parser.add_argument(f"--{prefix}-move-selector", choices=("direct", "mcts"), default="mcts")
     parser.add_argument(f"--{prefix}-mcts-simulations", type=int, default=16)
     parser.add_argument(f"--{prefix}-mcts-evaluation-batch-size", type=int, default=1)
@@ -91,6 +95,11 @@ def validate_player_arguments(parser: argparse.ArgumentParser, args: argparse.Na
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint" and not _arg(args, prefix, "checkpoint"):
         parser.error(f"--{prefix}-checkpoint is required when --{prefix}-kind checkpoint")
+    if kind == "checkpoint" and _arg(args, prefix, "move_selection_profile") != "self-play":
+        if _arg(args, prefix, "move_selection_temperature") is not None:
+            parser.error(f"--{prefix}-move-selection-temperature requires --{prefix}-move-selection-profile self-play")
+        if _arg(args, prefix, "move_selection_temperature_plies") is not None:
+            parser.error(f"--{prefix}-move-selection-temperature-plies requires --{prefix}-move-selection-profile self-play")
     if kind == "usi_engine" and not _arg(args, prefix, "usi_command"):
         parser.error(f"--{prefix}-usi-command is required when --{prefix}-kind usi_engine")
 
@@ -101,10 +110,18 @@ def player_spec_from_args(args: argparse.Namespace, prefix: str, *, seed: int | 
         checkpoint = _arg(args, prefix, "checkpoint")
         if checkpoint is None:
             raise ValueError(f"{prefix} checkpoint player requires a checkpoint")
+        move_selection_profile = _arg(args, prefix, "move_selection_profile")
+        move_selection_temperature = _arg(args, prefix, "move_selection_temperature")
+        move_selection_temperature_plies = _arg(args, prefix, "move_selection_temperature_plies")
+        if move_selection_profile == "self-play":
+            move_selection_temperature = 1.0 if move_selection_temperature is None else move_selection_temperature
+            move_selection_temperature_plies = 40 if move_selection_temperature_plies is None else move_selection_temperature_plies
         return CheckpointPolicyPlayerSpec(
             checkpoint=checkpoint,
             checkpoint_id=_arg(args, prefix, "checkpoint_id"),
-            move_selection_profile=_arg(args, prefix, "move_selection_profile"),
+            move_selection_profile=move_selection_profile,
+            move_selection_temperature=move_selection_temperature,
+            move_selection_temperature_plies=move_selection_temperature_plies,
             move_selector=_arg(args, prefix, "move_selector"),
             mcts_simulations=_arg(args, prefix, "mcts_simulations"),
             mcts_evaluation_batch_size=_arg(args, prefix, "mcts_evaluation_batch_size"),
@@ -143,6 +160,8 @@ def build_static_player(spec: PlayerSpec, *, name: str) -> BuiltPlayer | None:
             move_selector=spec.move_selector,
             config=mcts_config,
             profile=spec.move_selection_profile,
+            temperature=spec.move_selection_temperature,
+            temperature_plies=spec.move_selection_temperature_plies,
             device=spec.device,
             board_backend=spec.board_backend,
             seed=spec.seed,
@@ -157,6 +176,8 @@ def build_static_player(spec: PlayerSpec, *, name: str) -> BuiltPlayer | None:
                     "checkpoint_id": spec.checkpoint_id,
                     "checkpoint_path": spec.checkpoint,
                     "move_selection_profile": spec.move_selection_profile,
+                    "move_selection_temperature": spec.move_selection_temperature,
+                    "move_selection_temperature_plies": spec.move_selection_temperature_plies,
                     "move_selector": spec.move_selector,
                     "mcts_simulations_per_move": mcts_config.simulation_count if spec.move_selector == "mcts" else None,
                     "nn_leaf_eval_batch_limit": mcts_config.evaluation_batch_size if spec.move_selector == "mcts" else None,
@@ -223,6 +244,8 @@ def _load_move_selector(
     move_selector: str,
     config: MctsConfig,
     profile: str,
+    temperature: float | None,
+    temperature_plies: int | None,
     device: str,
     board_backend: str,
     seed: int | None = None,
@@ -230,12 +253,34 @@ def _load_move_selector(
     if move_selector == "direct":
         return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device, board_backend=board_backend)
     evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint, device=device)
-    return MctsMoveSelector(evaluator=evaluator, config=config, move_selection=_move_selection_config(profile, seed=seed))
+    return MctsMoveSelector(
+        evaluator=evaluator,
+        config=config,
+        move_selection=_move_selection_config(
+            profile,
+            seed=seed,
+            temperature=temperature,
+            temperature_plies=temperature_plies,
+        ),
+    )
 
 
-def _move_selection_config(profile: str, *, seed: int | None = None):
+def _move_selection_config(
+    profile: str,
+    *,
+    seed: int | None = None,
+    temperature: float | None = None,
+    temperature_plies: int | None = None,
+):
     if profile == "self-play":
-        return self_play_move_selection_config(seed=seed)
+        kwargs: dict[str, object] = {"seed": seed}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        if temperature_plies is not None:
+            kwargs["temperature_plies"] = temperature_plies
+        return self_play_move_selection_config(**kwargs)
+    if temperature is not None or temperature_plies is not None:
+        raise ValueError("move selection temperature is only supported for self-play profile")
     return evaluation_move_selection_config()
 
 

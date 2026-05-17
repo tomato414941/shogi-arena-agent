@@ -165,6 +165,8 @@ def _player_command_args(args: argparse.Namespace, prefix: str) -> list[str]:
         "checkpoint",
         "checkpoint_id",
         "move_selection_profile",
+        "move_selection_temperature",
+        "move_selection_temperature_plies",
         "move_selector",
         "mcts_simulations",
         "mcts_evaluation_batch_size",

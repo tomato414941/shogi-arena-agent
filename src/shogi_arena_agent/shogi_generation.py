@@ -281,7 +281,12 @@ def _checkpoint_selector(
             board_backend=board_backend,
             root_reuse=player.mcts_root_reuse,
         ),
-        move_selection=_move_selection_config(player.move_selection_profile, seed=player.seed),
+        move_selection=_move_selection_config(
+            player.move_selection_profile,
+            seed=player.seed,
+            temperature=player.move_selection_temperature,
+            temperature_plies=player.move_selection_temperature_plies,
+        ),
     )
 
 
@@ -300,6 +305,8 @@ def _checkpoint_actor(
             "checkpoint_id": player.checkpoint_id,
             "checkpoint_path": player.checkpoint,
             "move_selection_profile": player.move_selection_profile,
+            "move_selection_temperature": player.move_selection_temperature,
+            "move_selection_temperature_plies": player.move_selection_temperature_plies,
             "move_selector": player.move_selector,
             "mcts_simulations_per_move": player.mcts_simulations,
             "nn_leaf_eval_batch_limit": player.mcts_evaluation_batch_size,
@@ -315,9 +322,22 @@ def _checkpoint_actor(
     )
 
 
-def _move_selection_config(profile: str, *, seed: int | None = None):
+def _move_selection_config(
+    profile: str,
+    *,
+    seed: int | None = None,
+    temperature: float | None = None,
+    temperature_plies: int | None = None,
+):
     if profile == "self-play":
-        return self_play_move_selection_config(seed=seed)
+        kwargs: dict[str, object] = {"seed": seed}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        if temperature_plies is not None:
+            kwargs["temperature_plies"] = temperature_plies
+        return self_play_move_selection_config(**kwargs)
+    if temperature is not None or temperature_plies is not None:
+        raise ValueError("move selection temperature is only supported for self-play profile")
     return evaluation_move_selection_config()
 
 
