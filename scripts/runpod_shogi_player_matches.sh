@@ -21,6 +21,7 @@ NN_LEAF_EVAL_BATCH_LIMIT=${NN_LEAF_EVAL_BATCH_LIMIT:-64}
 MOVE_SELECTION_PROFILE=${MOVE_SELECTION_PROFILE:-self-play}
 USI_GO_COMMAND=${USI_GO_COMMAND:-go nodes 1}
 YANEURAOU_REPOSITORY_URL=${YANEURAOU_REPOSITORY_URL:-https://github.com/yaneurao/YaneuraOu.git}
+RUN_YANEURAOU=${RUN_YANEURAOU:-1}
 
 GPU_TYPE=${GPU_TYPE:-NVIDIA RTX A5000}
 MAX_RUNTIME_MINUTES=${MAX_RUNTIME_MINUTES:-120}
@@ -108,6 +109,7 @@ if [[ -n \"$PLAYER_B_CHECKPOINT\" ]]; then
   --max-plies \"$MAX_PLIES\" | tee \"$OUTPUT_DIR/sampled-vs-checkpoint/summary.json\"
 fi
 
+if [[ \"$RUN_YANEURAOU\" == \"1\" ]]; then
 apt-get update >/dev/null
 DEBIAN_FRONTEND=noninteractive apt-get install -y git build-essential >/dev/null
 rm -rf /root/YaneuraOu
@@ -128,5 +130,6 @@ make -s -C /root/YaneuraOu/source -f Makefile -j\"\$(nproc)\" normal TARGET_CPU=
   --player-b-usi-go-command \"$USI_GO_COMMAND\" \
   --out \"$OUTPUT_DIR/sampled-vs-yaneuraou/games.jsonl\" \
   --games \"$GAMES\" \
-  --max-plies \"$MAX_PLIES\" | tee \"$OUTPUT_DIR/sampled-vs-yaneuraou/summary.json\"" \
+  --max-plies \"$MAX_PLIES\" | tee \"$OUTPUT_DIR/sampled-vs-yaneuraou/summary.json\"
+fi" \
   "$@"
