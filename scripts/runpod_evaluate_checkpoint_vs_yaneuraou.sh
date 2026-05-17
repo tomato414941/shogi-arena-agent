@@ -166,7 +166,7 @@ trap cleanup_gpu_sampler EXIT
   --player-a-mcts-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
   --player-a-device cuda \\
   --player-a-board-backend '$BOARD_BACKEND' \\
-  --player-b-kind usi \\
+  --player-b-kind usi_engine \\
   --player-b-usi-command /root/YaneuraOu/source/YaneuraOu-runpod \\
   --player-b-usi-go-command '$YANEURAOU_GO_COMMAND' \\
   --player-b-usi-read-timeout-seconds '$YANEURAOU_READ_TIMEOUT_SECONDS' \\

@@ -135,15 +135,15 @@ read timeout is applied so a non-responsive engine does not hang the runner.
 
 ## External Engine Evaluation
 
-Any USI-compatible engine can be used as the opponent process. For example,
+Any USI-compatible engine can be used as player B. For example,
 after preparing a YaneuraOu executable:
 
 ```sh
 uv run python scripts/evaluate_shogi_players.py \
-  --player-kind deterministic_legal \
-  --opponent-kind usi \
-  --opponent-usi-command /path/to/YaneuraOu \
-  --opponent-usi-go-command "go nodes 1" \
+  --player-a-kind deterministic_legal \
+  --player-b-kind usi_engine \
+  --player-b-usi-command /path/to/YaneuraOu \
+  --player-b-usi-go-command "go nodes 1" \
   --games 2 \
   --max-plies 320 \
   --out runs/shogi/evaluation.jsonl
@@ -157,7 +157,7 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --black-checkpoint /path/to/checkpoint.pt \
   --black-move-selector mcts \
   --black-mcts-simulations 16 \
-  --white-kind usi \
+  --white-kind usi_engine \
   --white-usi-command /path/to/YaneuraOu \
   --white-usi-go-command "go nodes 1" \
   --games 2 \
@@ -188,10 +188,10 @@ USI engine self-play also writes the same record format:
 
 ```sh
 uv run --extra model python scripts/generate_shogi_games.py \
-  --black-kind usi \
+  --black-kind usi_engine \
   --black-usi-command /path/to/YaneuraOu \
   --black-usi-go-command "go nodes 1" \
-  --white-kind usi \
+  --white-kind usi_engine \
   --white-usi-command /path/to/YaneuraOu \
   --white-usi-go-command "go nodes 1" \
   --games 2 \

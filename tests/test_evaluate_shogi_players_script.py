@@ -134,11 +134,11 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
                 module.main(
                     [
                         "--player-a-kind",
-                        "usi",
+                        "usi_engine",
                         "--player-a-usi-command",
                         "engine",
                         "--player-b-kind",
-                        "usi",
+                        "usi_engine",
                         "--player-b-usi-command",
                         "engine",
                         "--games",

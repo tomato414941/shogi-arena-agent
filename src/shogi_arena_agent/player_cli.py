@@ -24,7 +24,7 @@ from shogi_arena_agent.shogi_game import ShogiActorSpec, ShogiPlayer
 from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
-PLAYER_KINDS = ("checkpoint", "usi", "deterministic_legal")
+PLAYER_KINDS = ("checkpoint", "usi_engine", "deterministic_legal")
 MOVE_SELECTION_PROFILES = ("evaluation", "self-play")
 
 
@@ -58,8 +58,8 @@ def validate_player_arguments(parser: argparse.ArgumentParser, args: argparse.Na
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint" and not _arg(args, prefix, "checkpoint"):
         parser.error(f"--{prefix}-checkpoint is required when --{prefix}-kind checkpoint")
-    if kind == "usi" and not _arg(args, prefix, "usi_command"):
-        parser.error(f"--{prefix}-usi-command is required when --{prefix}-kind usi")
+    if kind == "usi_engine" and not _arg(args, prefix, "usi_command"):
+        parser.error(f"--{prefix}-usi-command is required when --{prefix}-kind usi_engine")
 
 
 def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> BuiltPlayer | None:

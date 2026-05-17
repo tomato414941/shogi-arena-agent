@@ -130,7 +130,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             module.main(
                 [
                     "--black-kind",
-                    "usi",
+                    "usi_engine",
                     "--white-kind",
                     "deterministic_legal",
                     "--out",
@@ -497,11 +497,11 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                 module.main(
                     [
                         "--black-kind",
-                        "usi",
+                        "usi_engine",
                         "--black-usi-command",
                         "engine",
                         "--white-kind",
-                        "usi",
+                        "usi_engine",
                         "--white-usi-command",
                         "engine",
                         "--games",

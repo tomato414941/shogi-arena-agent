@@ -96,7 +96,7 @@ for simulations in $SIMULATION_COUNTS; do
     --player-a-mcts-evaluation-batch-size \"$NN_LEAF_EVAL_BATCH_LIMIT\" \
     --player-a-device cuda \
     --player-a-board-backend cshogi \
-    --player-b-kind usi \
+    --player-b-kind usi_engine \
     --player-b-usi-command /root/YaneuraOu/source/YaneuraOu-runpod \
     --player-b-usi-go-command \"$USI_GO_COMMAND\" \
     --out \"\$case_dir/games.jsonl\" \
