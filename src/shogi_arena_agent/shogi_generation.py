@@ -8,7 +8,6 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import asdict, dataclass
 from statistics import mean
 from time import perf_counter
-from types import SimpleNamespace
 from typing import Any
 
 from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
@@ -19,7 +18,13 @@ from shogi_arena_agent.mcts_config import (
     self_play_move_selection_config,
 )
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
-from shogi_arena_agent.player_cli import BuiltPlayer, build_static_player, player_context
+from shogi_arena_agent.player_cli import (
+    BuiltPlayer,
+    CheckpointPolicyPlayerSpec,
+    PlayerSpec,
+    build_static_player,
+    player_context,
+)
 from shogi_arena_agent.shogi_game import (
     ShogiActorSpec,
     ShogiDecisionTelemetry,
@@ -32,31 +37,9 @@ from shogi_arena_agent.usi import UsiPosition
 
 
 @dataclass(frozen=True)
-class ShogiPlayerGenerationConfig:
-    kind: str
-    checkpoint: str | None = None
-    checkpoint_id: str | None = None
-    move_selection_profile: str = "evaluation"
-    move_selector: str = "mcts"
-    mcts_simulations: int = 16
-    mcts_evaluation_batch_size: int = 1
-    mcts_move_time_limit_sec: float | None = None
-    mcts_root_reuse: bool = False
-    device: str = "cpu"
-    board_backend: str = "python-shogi"
-    usi_command: str | None = None
-    usi_option: tuple[str, ...] = ()
-    usi_go_command: str = "go nodes 1"
-    usi_read_timeout_seconds: float = 10.0
-    usi_policy_target_multipv: int | None = None
-    usi_policy_target_temperature_cp: float = 100.0
-    seed: int | None = None
-
-
-@dataclass(frozen=True)
 class ShogiGenerationConfig:
-    black: ShogiPlayerGenerationConfig
-    white: ShogiPlayerGenerationConfig
+    black: PlayerSpec
+    white: PlayerSpec
     games: int
     concurrent_games_per_process: int
     max_plies: int
@@ -72,13 +55,11 @@ def generate_shogi_games(
     if config.concurrent_games_per_process > 1:
         return _play_batched_checkpoint_mcts_games(config, checkpoint_evaluator_cls=checkpoint_evaluator_cls)
     records: list[ShogiGameRecord] = []
-    black_args = _player_args(config.black, prefix="black")
-    white_args = _player_args(config.white, prefix="white")
-    black_static = build_static_player(black_args, "black", name="black")
-    white_static = build_static_player(white_args, "white", name="white")
+    black_static = build_static_player(config.black, name="black")
+    white_static = build_static_player(config.white, name="white")
     with ExitStack() as stack:
-        black = stack.enter_context(_player_context(black_args, "black", name="black", static_player=black_static))
-        white = stack.enter_context(_player_context(white_args, "white", name="white", static_player=white_static))
+        black = stack.enter_context(_player_context(config.black, name="black", static_player=black_static))
+        white = stack.enter_context(_player_context(config.white, name="white", static_player=white_static))
         for _game_index in range(config.games):
             records.append(
                 play_shogi_game(
@@ -184,15 +165,14 @@ def _play_batched_checkpoint_mcts_games(
 
 
 def _player_context(
-    args: object,
-    prefix: str,
+    spec: PlayerSpec,
     *,
     name: str,
     static_player: BuiltPlayer | None,
 ):
     if static_player is not None:
         return nullcontext(static_player)
-    return player_context(args, prefix, name=name)
+    return player_context(spec, name=name)
 
 
 class _ActiveBatchedGame:
@@ -271,7 +251,7 @@ class _ActiveBatchedGame:
 
 def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> None:
     for player in (config.black, config.white):
-        if player.kind != "checkpoint":
+        if not isinstance(player, CheckpointPolicyPlayerSpec):
             raise SystemExit("--concurrent-games-per-process currently supports checkpoint-vs-checkpoint generation only")
         if player.move_selector != "mcts":
             raise SystemExit("--concurrent-games-per-process currently supports checkpoint MCTS players only")
@@ -284,13 +264,11 @@ def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> N
 
 
 def _checkpoint_selector(
-    player: ShogiPlayerGenerationConfig,
+    player: CheckpointPolicyPlayerSpec,
     *,
     board_backend: str,
     evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator],
 ) -> MctsBatchSearchExecutor:
-    if player.checkpoint is None:
-        raise SystemExit("checkpoint is required")
     evaluator = evaluator_cls.from_checkpoint(
         player.checkpoint,
         device=player.device,
@@ -308,7 +286,7 @@ def _checkpoint_selector(
 
 
 def _checkpoint_actor(
-    player: ShogiPlayerGenerationConfig,
+    player: CheckpointPolicyPlayerSpec,
     *,
     name: str,
     concurrent_games_per_process: int,
@@ -452,27 +430,3 @@ def _add_actual_leaf_eval_batch_summary(summary: dict[str, Any], samples: list[d
         summary["actual_nn_leaf_eval_batch_size_fill_ratio_avg"] = mean(fill_ratio_values)
     if histogram:
         summary["actual_nn_leaf_eval_batch_size_histogram"] = dict(sorted(histogram.items()))
-
-
-def _player_args(player: ShogiPlayerGenerationConfig, *, prefix: str) -> object:
-    return SimpleNamespace(
-        **{
-            f"{prefix}_kind": player.kind,
-            f"{prefix}_checkpoint": player.checkpoint,
-            f"{prefix}_checkpoint_id": player.checkpoint_id,
-            f"{prefix}_move_selection_profile": player.move_selection_profile,
-            f"{prefix}_move_selector": player.move_selector,
-            f"{prefix}_mcts_simulations": player.mcts_simulations,
-            f"{prefix}_mcts_evaluation_batch_size": player.mcts_evaluation_batch_size,
-            f"{prefix}_mcts_move_time_limit_sec": player.mcts_move_time_limit_sec,
-            f"{prefix}_mcts_root_reuse": player.mcts_root_reuse,
-            f"{prefix}_device": player.device,
-            f"{prefix}_board_backend": player.board_backend,
-            f"{prefix}_usi_command": player.usi_command,
-            f"{prefix}_usi_option": list(player.usi_option),
-            f"{prefix}_usi_go_command": player.usi_go_command,
-            f"{prefix}_usi_read_timeout_seconds": player.usi_read_timeout_seconds,
-            f"{prefix}_usi_policy_target_multipv": player.usi_policy_target_multipv,
-            f"{prefix}_usi_policy_target_temperature_cp": player.usi_policy_target_temperature_cp,
-        }
-    )

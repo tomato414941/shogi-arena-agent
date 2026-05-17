@@ -34,6 +34,39 @@ class BuiltPlayer:
     actor: ShogiActorSpec
 
 
+@dataclass(frozen=True)
+class CheckpointPolicyPlayerSpec:
+    checkpoint: str
+    checkpoint_id: str | None = None
+    move_selection_profile: str = "evaluation"
+    move_selector: str = "mcts"
+    mcts_simulations: int = 16
+    mcts_evaluation_batch_size: int = 1
+    mcts_move_time_limit_sec: float | None = None
+    mcts_root_reuse: bool = False
+    device: str = "cpu"
+    board_backend: str = "python-shogi"
+    seed: int | None = None
+
+
+@dataclass(frozen=True)
+class ExternalEnginePlayerSpec:
+    command: str
+    usi_option: tuple[str, ...] = ()
+    usi_go_command: str = "go nodes 1"
+    usi_read_timeout_seconds: float = 10.0
+    usi_policy_target_multipv: int | None = None
+    usi_policy_target_temperature_cp: float = 100.0
+
+
+@dataclass(frozen=True)
+class DeterministicLegalPlayerSpec:
+    pass
+
+
+PlayerSpec = CheckpointPolicyPlayerSpec | ExternalEnginePlayerSpec | DeterministicLegalPlayerSpec
+
+
 def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-kind", choices=PLAYER_KINDS, required=True)
     parser.add_argument(f"--{prefix}-checkpoint")
@@ -62,33 +95,57 @@ def validate_player_arguments(parser: argparse.ArgumentParser, args: argparse.Na
         parser.error(f"--{prefix}-usi-command is required when --{prefix}-kind usi_engine")
 
 
-def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> BuiltPlayer | None:
+def player_spec_from_args(args: argparse.Namespace, prefix: str, *, seed: int | None = None) -> PlayerSpec:
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint":
         checkpoint = _arg(args, prefix, "checkpoint")
-        checkpoint_id = _arg(args, prefix, "checkpoint_id")
-        profile = _arg(args, prefix, "move_selection_profile")
-        move_selector = _arg(args, prefix, "move_selector")
-        simulations = _arg(args, prefix, "mcts_simulations")
-        evaluation_batch_size = _arg(args, prefix, "mcts_evaluation_batch_size")
-        move_time_limit_sec = _arg(args, prefix, "mcts_move_time_limit_sec")
-        root_reuse = _arg(args, prefix, "mcts_root_reuse")
-        device = _arg(args, prefix, "device")
-        board_backend = _arg(args, prefix, "board_backend")
+        if checkpoint is None:
+            raise ValueError(f"{prefix} checkpoint player requires a checkpoint")
+        return CheckpointPolicyPlayerSpec(
+            checkpoint=checkpoint,
+            checkpoint_id=_arg(args, prefix, "checkpoint_id"),
+            move_selection_profile=_arg(args, prefix, "move_selection_profile"),
+            move_selector=_arg(args, prefix, "move_selector"),
+            mcts_simulations=_arg(args, prefix, "mcts_simulations"),
+            mcts_evaluation_batch_size=_arg(args, prefix, "mcts_evaluation_batch_size"),
+            mcts_move_time_limit_sec=_arg(args, prefix, "mcts_move_time_limit_sec"),
+            mcts_root_reuse=_arg(args, prefix, "mcts_root_reuse"),
+            device=_arg(args, prefix, "device"),
+            board_backend=_arg(args, prefix, "board_backend"),
+            seed=seed,
+        )
+    if kind == "deterministic_legal":
+        return DeterministicLegalPlayerSpec()
+    command = _arg(args, prefix, "usi_command")
+    if command is None:
+        raise ValueError(f"{prefix} USI engine player requires a command")
+    return ExternalEnginePlayerSpec(
+        command=command,
+        usi_option=tuple(_arg(args, prefix, "usi_option")),
+        usi_go_command=_arg(args, prefix, "usi_go_command"),
+        usi_read_timeout_seconds=_arg(args, prefix, "usi_read_timeout_seconds"),
+        usi_policy_target_multipv=_arg(args, prefix, "usi_policy_target_multipv"),
+        usi_policy_target_temperature_cp=_arg(args, prefix, "usi_policy_target_temperature_cp"),
+    )
+
+
+def build_static_player(spec: PlayerSpec, *, name: str) -> BuiltPlayer | None:
+    if isinstance(spec, CheckpointPolicyPlayerSpec):
         mcts_config = MctsConfig(
-            simulation_count=simulations,
-            evaluation_batch_size=evaluation_batch_size,
-            move_time_limit_sec=move_time_limit_sec,
-            board_backend=board_backend,
-            root_reuse=root_reuse,
+            simulation_count=spec.mcts_simulations,
+            evaluation_batch_size=spec.mcts_evaluation_batch_size,
+            move_time_limit_sec=spec.mcts_move_time_limit_sec,
+            board_backend=spec.board_backend,
+            root_reuse=spec.mcts_root_reuse,
         )
         policy = _load_move_selector(
-            checkpoint,
-            move_selector=move_selector,
+            spec.checkpoint,
+            move_selector=spec.move_selector,
             config=mcts_config,
-            profile=profile,
-            device=device,
-            board_backend=board_backend,
+            profile=spec.move_selection_profile,
+            device=spec.device,
+            board_backend=spec.board_backend,
+            seed=spec.seed,
         )
         return BuiltPlayer(
             player=UsiEngine(name=name, policy=policy),
@@ -96,23 +153,24 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
                 kind="checkpoint",
                 name=name,
                 settings={
-                    "checkpoint": checkpoint,
-                    "checkpoint_id": checkpoint_id,
-                    "checkpoint_path": checkpoint,
-                    "move_selection_profile": profile,
-                    "move_selector": move_selector,
-                    "mcts_simulations_per_move": mcts_config.simulation_count if move_selector == "mcts" else None,
-                    "nn_leaf_eval_batch_limit": mcts_config.evaluation_batch_size if move_selector == "mcts" else None,
-                    "simulations": mcts_config.simulation_count if move_selector == "mcts" else None,
-                    "evaluation_batch_size": mcts_config.evaluation_batch_size if move_selector == "mcts" else None,
-                    "move_time_limit_sec": mcts_config.move_time_limit_sec if move_selector == "mcts" else None,
-                    "root_reuse": mcts_config.root_reuse if move_selector == "mcts" else None,
-                    "device": device,
-                    "board_backend": board_backend,
+                    "checkpoint": spec.checkpoint,
+                    "checkpoint_id": spec.checkpoint_id,
+                    "checkpoint_path": spec.checkpoint,
+                    "move_selection_profile": spec.move_selection_profile,
+                    "move_selector": spec.move_selector,
+                    "mcts_simulations_per_move": mcts_config.simulation_count if spec.move_selector == "mcts" else None,
+                    "nn_leaf_eval_batch_limit": mcts_config.evaluation_batch_size if spec.move_selector == "mcts" else None,
+                    "simulations": mcts_config.simulation_count if spec.move_selector == "mcts" else None,
+                    "evaluation_batch_size": mcts_config.evaluation_batch_size if spec.move_selector == "mcts" else None,
+                    "move_time_limit_sec": mcts_config.move_time_limit_sec if spec.move_selector == "mcts" else None,
+                    "root_reuse": mcts_config.root_reuse if spec.move_selector == "mcts" else None,
+                    "device": spec.device,
+                    "board_backend": spec.board_backend,
+                    "seed": spec.seed,
                 },
             ),
         )
-    if kind == "deterministic_legal":
+    if isinstance(spec, DeterministicLegalPlayerSpec):
         return BuiltPlayer(
             player=UsiEngine(name=name, policy=DeterministicLegalMovePolicy()),
             actor=ShogiActorSpec(kind="deterministic_legal", name=name, settings={}),
@@ -121,39 +179,39 @@ def build_static_player(args: argparse.Namespace, prefix: str, *, name: str) -> 
 
 
 @contextmanager
-def player_context(args: argparse.Namespace, prefix: str, *, name: str) -> Iterator[BuiltPlayer]:
-    static_player = build_static_player(args, prefix, name=name)
+def player_context(spec: PlayerSpec, *, name: str) -> Iterator[BuiltPlayer]:
+    static_player = build_static_player(spec, name=name)
     if static_player is not None:
         yield static_player
         return
 
-    command = _arg(args, prefix, "usi_command")
-    options = _parse_usi_options(_arg(args, prefix, "usi_option"))
-    go_command = _arg(args, prefix, "usi_go_command")
-    read_timeout_seconds = _arg(args, prefix, "usi_read_timeout_seconds")
-    multipv = _arg(args, prefix, "usi_policy_target_multipv")
-    temperature_cp = _arg(args, prefix, "usi_policy_target_temperature_cp")
+    if not isinstance(spec, ExternalEnginePlayerSpec):
+        raise TypeError(f"unsupported player spec: {type(spec).__name__}")
+    options = _parse_usi_options(list(spec.usi_option))
     actor = ShogiActorSpec(
         kind="usi_engine",
         name=name,
         settings={
-            "command": command,
+            "command": spec.command,
             "usi_options_json": json.dumps(options, sort_keys=True),
-            "go_command": go_command,
-            "read_timeout_seconds": read_timeout_seconds,
-            "policy_target_multipv": multipv,
-            "policy_target_temperature_cp": temperature_cp,
+            "go_command": spec.usi_go_command,
+            "read_timeout_seconds": spec.usi_read_timeout_seconds,
+            "policy_target_multipv": spec.usi_policy_target_multipv,
+            "policy_target_temperature_cp": spec.usi_policy_target_temperature_cp,
         },
     )
     with UsiProcess(
-        command=[command],
+        command=[spec.command],
         options=options,
-        go_command=go_command,
-        read_timeout_seconds=read_timeout_seconds,
+        go_command=spec.usi_go_command,
+        read_timeout_seconds=spec.usi_read_timeout_seconds,
     ) as engine:
         player: ShogiPlayer = engine
-        if multipv is not None:
-            config = MultiPVPolicyTargetConfig(multipv=multipv, temperature_cp=temperature_cp)
+        if spec.usi_policy_target_multipv is not None:
+            config = MultiPVPolicyTargetConfig(
+                multipv=spec.usi_policy_target_multipv,
+                temperature_cp=spec.usi_policy_target_temperature_cp,
+            )
             configure_multipv_player_options(engine, config)
             player = MultiPVPolicyTargetPlayer(engine, config)
         yield BuiltPlayer(player=player, actor=actor)
@@ -167,16 +225,17 @@ def _load_move_selector(
     profile: str,
     device: str,
     board_backend: str,
+    seed: int | None = None,
 ) -> Any:
     if move_selector == "direct":
         return ShogiMoveChoiceCheckpointPolicy.from_checkpoint(checkpoint, device=device, board_backend=board_backend)
     evaluator = ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint, device=device)
-    return MctsMoveSelector(evaluator=evaluator, config=config, move_selection=_move_selection_config(profile))
+    return MctsMoveSelector(evaluator=evaluator, config=config, move_selection=_move_selection_config(profile, seed=seed))
 
 
-def _move_selection_config(profile: str):
+def _move_selection_config(profile: str, *, seed: int | None = None):
     if profile == "self-play":
-        return self_play_move_selection_config()
+        return self_play_move_selection_config(seed=seed)
     return evaluation_move_selection_config()
 
 

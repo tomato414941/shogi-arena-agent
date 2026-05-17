@@ -8,11 +8,10 @@ from pathlib import Path
 from time import perf_counter
 
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
-from shogi_arena_agent.player_cli import add_player_arguments, validate_player_arguments
+from shogi_arena_agent.player_cli import PlayerSpec, add_player_arguments, player_spec_from_args, validate_player_arguments
 from shogi_arena_agent.shogi_game import save_shogi_game_records_jsonl
 from shogi_arena_agent.shogi_generation import (
     ShogiGenerationConfig,
-    ShogiPlayerGenerationConfig,
     generate_shogi_games,
     records_summary,
 )
@@ -75,27 +74,8 @@ def _generation_config_from_args(args: argparse.Namespace) -> ShogiGenerationCon
     )
 
 
-def _player_config_from_args(args: argparse.Namespace, prefix: str) -> ShogiPlayerGenerationConfig:
-    return ShogiPlayerGenerationConfig(
-        kind=getattr(args, f"{prefix}_kind"),
-        checkpoint=getattr(args, f"{prefix}_checkpoint"),
-        checkpoint_id=getattr(args, f"{prefix}_checkpoint_id"),
-        move_selection_profile=getattr(args, f"{prefix}_move_selection_profile"),
-        move_selector=getattr(args, f"{prefix}_move_selector"),
-        mcts_simulations=getattr(args, f"{prefix}_mcts_simulations"),
-        mcts_evaluation_batch_size=getattr(args, f"{prefix}_mcts_evaluation_batch_size"),
-        mcts_move_time_limit_sec=getattr(args, f"{prefix}_mcts_move_time_limit_sec"),
-        mcts_root_reuse=getattr(args, f"{prefix}_mcts_root_reuse"),
-        device=getattr(args, f"{prefix}_device"),
-        board_backend=getattr(args, f"{prefix}_board_backend"),
-        usi_command=getattr(args, f"{prefix}_usi_command"),
-        usi_option=tuple(getattr(args, f"{prefix}_usi_option")),
-        usi_go_command=getattr(args, f"{prefix}_usi_go_command"),
-        usi_read_timeout_seconds=getattr(args, f"{prefix}_usi_read_timeout_seconds"),
-        usi_policy_target_multipv=getattr(args, f"{prefix}_usi_policy_target_multipv"),
-        usi_policy_target_temperature_cp=getattr(args, f"{prefix}_usi_policy_target_temperature_cp"),
-        seed=args.seed,
-    )
+def _player_config_from_args(args: argparse.Namespace, prefix: str) -> PlayerSpec:
+    return player_spec_from_args(args, prefix, seed=args.seed)
 
 
 def _warn_short_max_plies(max_plies: int) -> None:

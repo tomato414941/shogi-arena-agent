@@ -7,11 +7,18 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from types import SimpleNamespace
 from typing import Callable
 
 from shogi_arena_agent.match_evaluation import MatchEvaluation, summarize_match_results
-from shogi_arena_agent.player_cli import BuiltPlayer, build_static_player, player_context
+from shogi_arena_agent.player_cli import (
+    BuiltPlayer,
+    CheckpointPolicyPlayerSpec,
+    DeterministicLegalPlayerSpec,
+    ExternalEnginePlayerSpec,
+    PlayerSpec,
+    build_static_player,
+    player_context,
+)
 from shogi_arena_agent.shogi_game import (
     ShogiGameRecord,
     load_shogi_game_records_jsonl,
@@ -21,30 +28,9 @@ from shogi_arena_agent.shogi_game import (
 
 
 @dataclass(frozen=True)
-class MatchPlayerConfig:
-    kind: str
-    checkpoint: str | None = None
-    checkpoint_id: str | None = None
-    move_selection_profile: str = "evaluation"
-    move_selector: str = "mcts"
-    mcts_simulations: int = 16
-    mcts_evaluation_batch_size: int = 1
-    mcts_move_time_limit_sec: float | None = None
-    mcts_root_reuse: bool = False
-    device: str = "cpu"
-    board_backend: str = "python-shogi"
-    usi_command: str | None = None
-    usi_option: tuple[str, ...] = ()
-    usi_go_command: str = "go nodes 1"
-    usi_read_timeout_seconds: float = 10.0
-    usi_policy_target_multipv: int | None = None
-    usi_policy_target_temperature_cp: float = 100.0
-
-
-@dataclass(frozen=True)
 class PlayerMatchRunConfig:
-    player_a: MatchPlayerConfig
-    player_b: MatchPlayerConfig
+    player_a: PlayerSpec
+    player_b: PlayerSpec
     games: int
     max_plies: int
     progress_every_games: int = 0
@@ -65,17 +51,11 @@ ProgressCallback = Callable[[dict[str, object]], None]
 def run_player_match(config: PlayerMatchRunConfig, *, progress_callback: ProgressCallback | None = None) -> MatchEvaluation:
     results: list[ShogiGameRecord] = []
     player_a_sides: list[str] = []
-    player_a_args = _player_args(config.player_a, prefix="player-a")
-    player_b_args = _player_args(config.player_b, prefix="player-b")
-    player_a_static = build_static_player(player_a_args, "player-a", name="player_a")
-    player_b_static = build_static_player(player_b_args, "player-b", name="player_b")
+    player_a_static = build_static_player(config.player_a, name="player_a")
+    player_b_static = build_static_player(config.player_b, name="player_b")
     with ExitStack() as stack:
-        player_a = stack.enter_context(
-            _player_context(player_a_args, "player-a", name="player_a", static_player=player_a_static)
-        )
-        player_b = stack.enter_context(
-            _player_context(player_b_args, "player-b", name="player_b", static_player=player_b_static)
-        )
+        player_a = stack.enter_context(_player_context(config.player_a, name="player_a", static_player=player_a_static))
+        player_b = stack.enter_context(_player_context(config.player_b, name="player_b", static_player=player_b_static))
         started_at = perf_counter()
         for offset in range(config.games):
             game_index = config.start_game_index + offset
@@ -159,40 +139,14 @@ def print_progress(payload: dict[str, object]) -> None:
 
 
 def _player_context(
-    args: object,
-    prefix: str,
+    spec: PlayerSpec,
     *,
     name: str,
     static_player: BuiltPlayer | None,
 ):
     if static_player is not None:
         return nullcontext(static_player)
-    return player_context(args, prefix, name=name)
-
-
-def _player_args(config: MatchPlayerConfig, *, prefix: str) -> SimpleNamespace:
-    prefix_name = prefix.replace("-", "_")
-    return SimpleNamespace(
-        **{
-            f"{prefix_name}_kind": config.kind,
-            f"{prefix_name}_checkpoint": config.checkpoint,
-            f"{prefix_name}_checkpoint_id": config.checkpoint_id,
-            f"{prefix_name}_move_selection_profile": config.move_selection_profile,
-            f"{prefix_name}_move_selector": config.move_selector,
-            f"{prefix_name}_mcts_simulations": config.mcts_simulations,
-            f"{prefix_name}_mcts_evaluation_batch_size": config.mcts_evaluation_batch_size,
-            f"{prefix_name}_mcts_move_time_limit_sec": config.mcts_move_time_limit_sec,
-            f"{prefix_name}_mcts_root_reuse": config.mcts_root_reuse,
-            f"{prefix_name}_device": config.device,
-            f"{prefix_name}_board_backend": config.board_backend,
-            f"{prefix_name}_usi_command": config.usi_command,
-            f"{prefix_name}_usi_option": list(config.usi_option),
-            f"{prefix_name}_usi_go_command": config.usi_go_command,
-            f"{prefix_name}_usi_read_timeout_seconds": config.usi_read_timeout_seconds,
-            f"{prefix_name}_usi_policy_target_multipv": config.usi_policy_target_multipv,
-            f"{prefix_name}_usi_policy_target_temperature_cp": config.usi_policy_target_temperature_cp,
-        }
-    )
+    return player_context(spec, name=name)
 
 
 def _shard_game_counts(games: int, worker_processes: int) -> list[int]:
@@ -227,27 +181,45 @@ def _shard_command(
     ]
 
 
-def _player_command_args(config: MatchPlayerConfig, prefix: str) -> list[str]:
-    command = [f"--{prefix}-kind", config.kind]
-    for name in (
-        "checkpoint",
-        "checkpoint_id",
-        "move_selection_profile",
-        "move_selector",
-        "mcts_simulations",
-        "mcts_evaluation_batch_size",
-        "mcts_move_time_limit_sec",
-        "mcts_root_reuse",
-        "device",
-        "board_backend",
-        "usi_command",
-        "usi_option",
-        "usi_go_command",
-        "usi_read_timeout_seconds",
-        "usi_policy_target_multipv",
-        "usi_policy_target_temperature_cp",
-    ):
-        value = getattr(config, name)
+def _player_command_args(spec: PlayerSpec, prefix: str) -> list[str]:
+    if isinstance(spec, CheckpointPolicyPlayerSpec):
+        return _command_args(
+            prefix,
+            "checkpoint",
+            {
+                "checkpoint": spec.checkpoint,
+                "checkpoint_id": spec.checkpoint_id,
+                "move_selection_profile": spec.move_selection_profile,
+                "move_selector": spec.move_selector,
+                "mcts_simulations": spec.mcts_simulations,
+                "mcts_evaluation_batch_size": spec.mcts_evaluation_batch_size,
+                "mcts_move_time_limit_sec": spec.mcts_move_time_limit_sec,
+                "mcts_root_reuse": spec.mcts_root_reuse,
+                "device": spec.device,
+                "board_backend": spec.board_backend,
+            },
+        )
+    if isinstance(spec, ExternalEnginePlayerSpec):
+        return _command_args(
+            prefix,
+            "usi_engine",
+            {
+                "usi_command": spec.command,
+                "usi_option": spec.usi_option,
+                "usi_go_command": spec.usi_go_command,
+                "usi_read_timeout_seconds": spec.usi_read_timeout_seconds,
+                "usi_policy_target_multipv": spec.usi_policy_target_multipv,
+                "usi_policy_target_temperature_cp": spec.usi_policy_target_temperature_cp,
+            },
+        )
+    if isinstance(spec, DeterministicLegalPlayerSpec):
+        return [f"--{prefix}-kind", "deterministic_legal"]
+    raise TypeError(f"unsupported player spec: {type(spec).__name__}")
+
+
+def _command_args(prefix: str, kind: str, fields: dict[str, object]) -> list[str]:
+    command = [f"--{prefix}-kind", kind]
+    for name, value in fields.items():
         if value is None:
             continue
         flag = f"--{prefix}-{name.replace('_', '-')}"

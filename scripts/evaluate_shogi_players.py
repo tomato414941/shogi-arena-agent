@@ -8,9 +8,8 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
-from shogi_arena_agent.player_cli import add_player_arguments, validate_player_arguments
+from shogi_arena_agent.player_cli import PlayerSpec, add_player_arguments, player_spec_from_args, validate_player_arguments
 from shogi_arena_agent.player_match_runner import (
-    MatchPlayerConfig,
     PlayerMatchRunConfig,
     ShardedPlayerMatchConfig,
     print_progress,
@@ -81,27 +80,8 @@ def _match_config_from_args(args: argparse.Namespace) -> PlayerMatchRunConfig:
     )
 
 
-def _player_config_from_args(args: argparse.Namespace, prefix: str) -> MatchPlayerConfig:
-    prefix_name = prefix.replace("-", "_")
-    return MatchPlayerConfig(
-        kind=getattr(args, f"{prefix_name}_kind"),
-        checkpoint=getattr(args, f"{prefix_name}_checkpoint"),
-        checkpoint_id=getattr(args, f"{prefix_name}_checkpoint_id"),
-        move_selection_profile=getattr(args, f"{prefix_name}_move_selection_profile"),
-        move_selector=getattr(args, f"{prefix_name}_move_selector"),
-        mcts_simulations=getattr(args, f"{prefix_name}_mcts_simulations"),
-        mcts_evaluation_batch_size=getattr(args, f"{prefix_name}_mcts_evaluation_batch_size"),
-        mcts_move_time_limit_sec=getattr(args, f"{prefix_name}_mcts_move_time_limit_sec"),
-        mcts_root_reuse=getattr(args, f"{prefix_name}_mcts_root_reuse"),
-        device=getattr(args, f"{prefix_name}_device"),
-        board_backend=getattr(args, f"{prefix_name}_board_backend"),
-        usi_command=getattr(args, f"{prefix_name}_usi_command"),
-        usi_option=tuple(getattr(args, f"{prefix_name}_usi_option")),
-        usi_go_command=getattr(args, f"{prefix_name}_usi_go_command"),
-        usi_read_timeout_seconds=getattr(args, f"{prefix_name}_usi_read_timeout_seconds"),
-        usi_policy_target_multipv=getattr(args, f"{prefix_name}_usi_policy_target_multipv"),
-        usi_policy_target_temperature_cp=getattr(args, f"{prefix_name}_usi_policy_target_temperature_cp"),
-    )
+def _player_config_from_args(args: argparse.Namespace, prefix: str) -> PlayerSpec:
+    return player_spec_from_args(args, prefix)
 
 
 def _evaluation_summary(evaluation: Any) -> dict[str, Any]:
