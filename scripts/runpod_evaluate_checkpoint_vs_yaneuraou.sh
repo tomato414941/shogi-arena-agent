@@ -13,6 +13,7 @@ OUTPUT_DIR=${OUTPUT_DIR:-runs/shogi/runpod-checkpoint-vs-yaneuraou}
 
 GPU_TYPE=${GPU_TYPE:-NVIDIA RTX 4000 Ada Generation}
 DATA_CENTER_IDS=${DATA_CENTER_IDS:-}
+SECURE_CLOUD=${SECURE_CLOUD:-0}
 MCTS_SIMULATIONS=${MCTS_SIMULATIONS:-4096}
 MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE:-64}
 MCTS_MOVE_TIME_LIMIT_SEC=${MCTS_MOVE_TIME_LIMIT_SEC:-9.0}
@@ -42,6 +43,11 @@ if [[ ! -f "$RUNPOD_JOB" ]]; then
   exit 1
 fi
 
+CLOUD_ARGS=()
+if [[ "$SECURE_CLOUD" == "1" ]]; then
+  CLOUD_ARGS+=(--secure-cloud)
+fi
+
 CHECKPOINT_ABS=$(realpath "$CHECKPOINT")
 INTREP_ABS=$(realpath "$INTREP_ROOT")
 case "$CHECKPOINT_ABS" in
@@ -66,6 +72,7 @@ python3 "$RUNPOD_JOB" \
   --name shogi-arena-eval \
   --template-id runpod-torch-v280 \
   --gpu-type "$GPU_TYPE" \
+  "${CLOUD_ARGS[@]}" \
   ${DATA_CENTER_IDS:+--data-center-ids "$DATA_CENTER_IDS"} \
   --container-disk-size 30 \
   --volume-size 0 \
