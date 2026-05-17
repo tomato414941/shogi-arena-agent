@@ -21,6 +21,13 @@ GAMES=${GAMES:-1}
 MAX_PLIES=${MAX_PLIES:-320}
 YANEURAOU_GO_COMMAND=${YANEURAOU_GO_COMMAND:-go nodes 1}
 YANEURAOU_READ_TIMEOUT_SECONDS=${YANEURAOU_READ_TIMEOUT_SECONDS:-30}
+YANEURAOU_EDITION=${YANEURAOU_EDITION:-YANEURAOU_ENGINE_MATERIAL}
+YANEURAOU_EVAL_ARCHIVE_URL=${YANEURAOU_EVAL_ARCHIVE_URL:-}
+YANEURAOU_EVAL_ARCHIVE_SHA256=${YANEURAOU_EVAL_ARCHIVE_SHA256:-}
+YANEURAOU_EVAL_DIR=${YANEURAOU_EVAL_DIR:-}
+YANEURAOU_THREADS=${YANEURAOU_THREADS:-}
+YANEURAOU_HASH_MB=${YANEURAOU_HASH_MB:-}
+YANEURAOU_FV_SCALE=${YANEURAOU_FV_SCALE:-}
 
 ARENA_REPOSITORY_URL=${ARENA_REPOSITORY_URL:-$(git config --get remote.origin.url)}
 ARENA_REF=${ARENA_REF:-main}
@@ -74,7 +81,7 @@ python3 "$RUNPOD_JOB" \
   --setup-command 'cd "$REMOTE_DIR"; bash scripts/setup_runpod.sh' \
   --remote "set -euo pipefail
 apt-get update >/dev/null
-DEBIAN_FRONTEND=noninteractive apt-get install -y git build-essential >/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y git build-essential curl unzip p7zip-full >/dev/null
 cd /root
 rm -rf shogi-arena-agent YaneuraOu
 GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch '$ARENA_REF' '$ARENA_REPOSITORY_URL' shogi-arena-agent
@@ -83,7 +90,42 @@ cd /root/shogi-arena-agent
 cd /root
 GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/yaneurao/YaneuraOu.git YaneuraOu
 cd /root/YaneuraOu/source
-make -s -f Makefile -j\"\$(nproc)\" normal TARGET_CPU=AVX2 YANEURAOU_EDITION=YANEURAOU_ENGINE_MATERIAL COMPILER=g++ TARGET=YaneuraOu-runpod
+make -s -f Makefile -j\"\$(nproc)\" normal TARGET_CPU=AVX2 YANEURAOU_EDITION='$YANEURAOU_EDITION' COMPILER=g++ TARGET=YaneuraOu-runpod
+REMOTE_YANEURAOU_EVAL_DIR='$YANEURAOU_EVAL_DIR'
+if [[ -n '$YANEURAOU_EVAL_ARCHIVE_URL' ]]; then
+  REMOTE_YANEURAOU_EVAL_DIR=\${REMOTE_YANEURAOU_EVAL_DIR:-/root/YaneuraOu/source/eval}
+  mkdir -p \"\$REMOTE_YANEURAOU_EVAL_DIR\"
+  curl -L --fail --retry 3 '$YANEURAOU_EVAL_ARCHIVE_URL' -o /root/yaneuraou-eval-archive
+  if [[ -n '$YANEURAOU_EVAL_ARCHIVE_SHA256' ]]; then
+    echo '$YANEURAOU_EVAL_ARCHIVE_SHA256  /root/yaneuraou-eval-archive' | sha256sum -c -
+  fi
+  if 7z l /root/yaneuraou-eval-archive >/dev/null 2>&1; then
+    7z x -y /root/yaneuraou-eval-archive -o\"\$REMOTE_YANEURAOU_EVAL_DIR\" >/dev/null
+  else
+    unzip -q /root/yaneuraou-eval-archive -d \"\$REMOTE_YANEURAOU_EVAL_DIR\"
+  fi
+  if [[ ! -f \"\$REMOTE_YANEURAOU_EVAL_DIR/nn.bin\" ]]; then
+    nnue_file=\$(find \"\$REMOTE_YANEURAOU_EVAL_DIR\" -type f \\( -name 'nn.bin' -o -name '*.nnue' -o -name '*.bin' \\) | head -n 1)
+    if [[ -z \"\$nnue_file\" ]]; then
+      echo 'NNUE eval archive did not contain nn.bin, *.nnue, or *.bin' >&2
+      exit 1
+    fi
+    cp \"\$nnue_file\" \"\$REMOTE_YANEURAOU_EVAL_DIR/nn.bin\"
+  fi
+fi
+YANEURAOU_OPTION_ARGS=()
+if [[ -n \"\$REMOTE_YANEURAOU_EVAL_DIR\" ]]; then
+  YANEURAOU_OPTION_ARGS+=(--player-b-usi-option \"EvalDir=\$REMOTE_YANEURAOU_EVAL_DIR\")
+fi
+if [[ -n '$YANEURAOU_THREADS' ]]; then
+  YANEURAOU_OPTION_ARGS+=(--player-b-usi-option 'Threads=$YANEURAOU_THREADS')
+fi
+if [[ -n '$YANEURAOU_HASH_MB' ]]; then
+  YANEURAOU_OPTION_ARGS+=(--player-b-usi-option 'Hash=$YANEURAOU_HASH_MB')
+fi
+if [[ -n '$YANEURAOU_FV_SCALE' ]]; then
+  YANEURAOU_OPTION_ARGS+=(--player-b-usi-option 'FV_SCALE=$YANEURAOU_FV_SCALE')
+fi
 mkdir -p '$REMOTE_OUTPUT'
 cd /root/shogi-arena-agent
 /root/intrep/.venv/bin/python - <<'PY' > '$REMOTE_GPU_SAMPLES' &
@@ -168,6 +210,7 @@ trap cleanup_gpu_sampler EXIT
   --player-a-board-backend '$BOARD_BACKEND' \\
   --player-b-kind usi_engine \\
   --player-b-usi-command /root/YaneuraOu/source/YaneuraOu-runpod \\
+  \"\${YANEURAOU_OPTION_ARGS[@]}\" \\
   --player-b-usi-go-command '$YANEURAOU_GO_COMMAND' \\
   --player-b-usi-read-timeout-seconds '$YANEURAOU_READ_TIMEOUT_SECONDS' \\
   --games '$GAMES' \\

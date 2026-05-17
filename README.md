@@ -213,6 +213,18 @@ MAX_PLIES=320 \
 ./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
 ```
 
+For a NNUE-backed YaneuraOu check, provide the YaneuraOu edition and evaluation
+archive at run time instead of committing the eval file:
+
+```sh
+CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
+YANEURAOU_EDITION=YANEURAOU_ENGINE_NNUE \
+YANEURAOU_EVAL_ARCHIVE_URL=https://github.com/yaneurao/YaneuraOu/releases/download/suisho5/Suisho5.7z \
+YANEURAOU_FV_SCALE=24 \
+YANEURAOU_GO_COMMAND="go byoyomi 1000" \
+./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
+```
+
 This script uses the shared `../runpod-job-runner/scripts/run_job.py` helper
 for pod lifecycle management, then runs the shogi arena evaluation in this
 repository. Results are copied back under `runs/shogi/`.
