@@ -185,6 +185,75 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
         self.assertEqual(records[1].white_actor.name, "player_a")
         self.assertEqual(sum(1 for record in records if record.winner is None), summary["draws"])
 
+    def test_match_worker_processes_merge_shards_with_global_side_assignment(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                module.main(
+                    [
+                        "--player-a-kind",
+                        "deterministic_legal",
+                        "--player-b-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "3",
+                        "--match-worker-processes",
+                        "2",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+            summary = json.loads(stdout.getvalue())
+
+        self.assertEqual(len(records), 3)
+        self.assertEqual(records[0].black_actor.name, "player_a")
+        self.assertEqual(records[1].white_actor.name, "player_a")
+        self.assertEqual(records[2].black_actor.name, "player_a")
+        self.assertEqual(summary["game_count"], 3)
+        self.assertEqual(summary["player_a_black_game_count"], 2)
+        self.assertEqual(summary["player_a_white_game_count"], 1)
+        self.assertEqual(summary["match_worker_processes"], 2)
+
+    def test_progress_every_games_writes_to_stderr(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                module.main(
+                    [
+                        "--player-a-kind",
+                        "deterministic_legal",
+                        "--player-b-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "2",
+                        "--progress-every-games",
+                        "1",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+        progress_lines = [line for line in stderr.getvalue().splitlines() if line.startswith("progress ")]
+        self.assertEqual(len(progress_lines), 2)
+        first_payload = json.loads(progress_lines[0].removeprefix("progress "))
+        self.assertEqual(first_payload["completed_games"], 1)
+        self.assertEqual(first_payload["total_games"], 2)
+
 
 def _load_script_module() -> ModuleType:
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "evaluate_shogi_players.py"

@@ -15,6 +15,8 @@ PLAYER_B_CHECKPOINT=${PLAYER_B_CHECKPOINT:-}
 OUTPUT_DIR=${OUTPUT_DIR:-runs/shogi/player-matches-runpod-$(date -u +%Y%m%d-%H%M%S)}
 
 GAMES=${GAMES:-16}
+MATCH_WORKER_PROCESSES=${MATCH_WORKER_PROCESSES:-1}
+PROGRESS_EVERY_GAMES=${PROGRESS_EVERY_GAMES:-0}
 MAX_PLIES=${MAX_PLIES:-320}
 SIMULATIONS=${SIMULATIONS:-128}
 NN_LEAF_EVAL_BATCH_LIMIT=${NN_LEAF_EVAL_BATCH_LIMIT:-64}
@@ -106,6 +108,8 @@ if [[ -n \"$PLAYER_B_CHECKPOINT\" ]]; then
   --player-b-board-backend cshogi \
   --out \"$OUTPUT_DIR/sampled-vs-checkpoint/games.jsonl\" \
   --games \"$GAMES\" \
+  --match-worker-processes \"$MATCH_WORKER_PROCESSES\" \
+  --progress-every-games \"$PROGRESS_EVERY_GAMES\" \
   --max-plies \"$MAX_PLIES\" | tee \"$OUTPUT_DIR/sampled-vs-checkpoint/summary.json\"
 fi
 
@@ -130,6 +134,8 @@ make -s -C /root/YaneuraOu/source -f Makefile -j\"\$(nproc)\" normal TARGET_CPU=
   --player-b-usi-go-command \"$USI_GO_COMMAND\" \
   --out \"$OUTPUT_DIR/sampled-vs-yaneuraou/games.jsonl\" \
   --games \"$GAMES\" \
+  --match-worker-processes \"$MATCH_WORKER_PROCESSES\" \
+  --progress-every-games \"$PROGRESS_EVERY_GAMES\" \
   --max-plies \"$MAX_PLIES\" | tee \"$OUTPUT_DIR/sampled-vs-yaneuraou/summary.json\"
 fi" \
   "$@"
