@@ -6,7 +6,7 @@ import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
 from shogi_arena_agent.mcts_batch_search_executor import MctsBatchSearchExecutor
-from shogi_arena_agent.mcts_config import MctsConfig, self_play_move_selection_config
+from shogi_arena_agent.mcts_config import MctsConfig, visit_sampling_move_selection_config
 from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator
 from shogi_arena_agent.mcts_move_selector import (
     MctsMoveSelector,
@@ -172,7 +172,7 @@ class MctsMoveSelectorTest(unittest.TestCase):
     def test_self_play_selection_can_sample_different_root_moves(self) -> None:
         selector = MctsBatchSearchExecutor(
             config=MctsConfig(simulation_count=8, evaluation_batch_size=8),
-            move_selection=self_play_move_selection_config(seed=1),
+            move_selection=visit_sampling_move_selection_config(seed=1),
         )
 
         results = selector.select_moves([UsiPosition(), UsiPosition(), UsiPosition(), UsiPosition()])

@@ -62,8 +62,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].white_actor.settings["checkpoint_path"], "white.pt")
         self.assertEqual(records[0].black_actor.settings["move_selector"], "mcts")
         self.assertEqual(records[0].white_actor.settings["move_selector"], "mcts")
-        self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "evaluation")
-        self.assertEqual(records[0].white_actor.settings["move_selection_profile"], "evaluation")
+        self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "visit-sampling")
+        self.assertEqual(records[0].white_actor.settings["move_selection_profile"], "visit-sampling")
         self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 1)
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 1)
         self.assertEqual(records[0].black_actor.settings["mcts_simulations_per_move"], 16)
@@ -95,7 +95,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "--black-mcts-evaluation-batch-size",
                         "8",
                         "--black-move-selection-profile",
-                        "self-play",
+                        "visit-sampling",
                         "--black-move-selection-temperature",
                         "0.75",
                         "--black-move-selection-temperature-plies",
@@ -124,7 +124,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
         self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 8)
         self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 16)
-        self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "self-play")
+        self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "visit-sampling")
         self.assertEqual(records[0].black_actor.settings["move_selection_temperature"], 0.75)
         self.assertEqual(records[0].black_actor.settings["move_selection_temperature_plies"], 12)
         self.assertEqual(records[0].black_actor.settings["move_time_limit_sec"], 8.5)

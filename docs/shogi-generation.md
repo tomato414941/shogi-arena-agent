@@ -38,14 +38,14 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --black-kind checkpoint \
   --black-checkpoint /path/to/checkpoint.pt \
   --black-move-selector mcts \
-  --black-move-selection-profile self-play \
+  --black-move-selection-profile visit-sampling \
   --black-mcts-simulations 16 \
   --black-mcts-evaluation-batch-size 32 \
   --black-device cuda \
   --white-kind checkpoint \
   --white-checkpoint /path/to/checkpoint.pt \
   --white-move-selector mcts \
-  --white-move-selection-profile self-play \
+  --white-move-selection-profile visit-sampling \
   --white-mcts-simulations 16 \
   --white-mcts-evaluation-batch-size 32 \
   --white-device cuda \

@@ -9,8 +9,7 @@ from typing import Any, Iterator
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
-    evaluation_move_selection_config,
-    self_play_move_selection_config,
+    visit_sampling_move_selection_config,
 )
 from shogi_arena_agent.mcts_move_selector import MctsMoveSelector
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator, ShogiMoveChoiceCheckpointPolicy
@@ -25,7 +24,7 @@ from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
 PLAYER_KINDS = ("checkpoint", "usi_engine", "deterministic_legal")
-MOVE_SELECTION_PROFILES = ("evaluation", "self-play")
+MOVE_SELECTION_PROFILES = ("visit-sampling",)
 
 
 @dataclass(frozen=True)
@@ -38,7 +37,7 @@ class BuiltPlayer:
 class CheckpointPolicyPlayerSpec:
     checkpoint: str
     checkpoint_id: str | None = None
-    move_selection_profile: str = "evaluation"
+    move_selection_profile: str = "visit-sampling"
     move_selection_temperature: float | None = None
     move_selection_temperature_plies: int | None = None
     move_selector: str = "mcts"
@@ -73,7 +72,7 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-kind", choices=PLAYER_KINDS, required=True)
     parser.add_argument(f"--{prefix}-checkpoint")
     parser.add_argument(f"--{prefix}-checkpoint-id")
-    parser.add_argument(f"--{prefix}-move-selection-profile", choices=MOVE_SELECTION_PROFILES, default="evaluation")
+    parser.add_argument(f"--{prefix}-move-selection-profile", choices=MOVE_SELECTION_PROFILES, default="visit-sampling")
     parser.add_argument(f"--{prefix}-move-selection-temperature", type=float)
     parser.add_argument(f"--{prefix}-move-selection-temperature-plies", type=int)
     parser.add_argument(f"--{prefix}-move-selector", choices=("direct", "mcts"), default="mcts")
@@ -95,11 +94,6 @@ def validate_player_arguments(parser: argparse.ArgumentParser, args: argparse.Na
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint" and not _arg(args, prefix, "checkpoint"):
         parser.error(f"--{prefix}-checkpoint is required when --{prefix}-kind checkpoint")
-    if kind == "checkpoint" and _arg(args, prefix, "move_selection_profile") != "self-play":
-        if _arg(args, prefix, "move_selection_temperature") is not None:
-            parser.error(f"--{prefix}-move-selection-temperature requires --{prefix}-move-selection-profile self-play")
-        if _arg(args, prefix, "move_selection_temperature_plies") is not None:
-            parser.error(f"--{prefix}-move-selection-temperature-plies requires --{prefix}-move-selection-profile self-play")
     if kind == "usi_engine" and not _arg(args, prefix, "usi_command"):
         parser.error(f"--{prefix}-usi-command is required when --{prefix}-kind usi_engine")
 
@@ -113,9 +107,8 @@ def player_spec_from_args(args: argparse.Namespace, prefix: str, *, seed: int | 
         move_selection_profile = _arg(args, prefix, "move_selection_profile")
         move_selection_temperature = _arg(args, prefix, "move_selection_temperature")
         move_selection_temperature_plies = _arg(args, prefix, "move_selection_temperature_plies")
-        if move_selection_profile == "self-play":
-            move_selection_temperature = 1.0 if move_selection_temperature is None else move_selection_temperature
-            move_selection_temperature_plies = 40 if move_selection_temperature_plies is None else move_selection_temperature_plies
+        move_selection_temperature = 1.0 if move_selection_temperature is None else move_selection_temperature
+        move_selection_temperature_plies = 40 if move_selection_temperature_plies is None else move_selection_temperature_plies
         return CheckpointPolicyPlayerSpec(
             checkpoint=checkpoint,
             checkpoint_id=_arg(args, prefix, "checkpoint_id"),
@@ -272,16 +265,14 @@ def _move_selection_config(
     temperature: float | None = None,
     temperature_plies: int | None = None,
 ):
-    if profile == "self-play":
+    if profile == "visit-sampling":
         kwargs: dict[str, object] = {"seed": seed}
         if temperature is not None:
             kwargs["temperature"] = temperature
         if temperature_plies is not None:
             kwargs["temperature_plies"] = temperature_plies
-        return self_play_move_selection_config(**kwargs)
-    if temperature is not None or temperature_plies is not None:
-        raise ValueError("move selection temperature is only supported for self-play profile")
-    return evaluation_move_selection_config()
+        return visit_sampling_move_selection_config(**kwargs)
+    raise ValueError(f"unsupported move selection profile: {profile}")
 
 
 def _arg(args: argparse.Namespace, prefix: str, name: str) -> Any:

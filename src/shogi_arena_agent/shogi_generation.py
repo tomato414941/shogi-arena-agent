@@ -14,8 +14,7 @@ from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name
 from shogi_arena_agent.mcts_batch_search_executor import MctsBatchSearchExecutor
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
-    evaluation_move_selection_config,
-    self_play_move_selection_config,
+    visit_sampling_move_selection_config,
 )
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.player_cli import (
@@ -329,16 +328,14 @@ def _move_selection_config(
     temperature: float | None = None,
     temperature_plies: int | None = None,
 ):
-    if profile == "self-play":
+    if profile == "visit-sampling":
         kwargs: dict[str, object] = {"seed": seed}
         if temperature is not None:
             kwargs["temperature"] = temperature
         if temperature_plies is not None:
             kwargs["temperature_plies"] = temperature_plies
-        return self_play_move_selection_config(**kwargs)
-    if temperature is not None or temperature_plies is not None:
-        raise ValueError("move selection temperature is only supported for self-play profile")
-    return evaluation_move_selection_config()
+        return visit_sampling_move_selection_config(**kwargs)
+    raise ValueError(f"unsupported move selection profile: {profile}")
 
 
 def _performance_payload(performance: object | None) -> dict[str, object] | None:
