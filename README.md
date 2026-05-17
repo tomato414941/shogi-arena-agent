@@ -225,6 +225,20 @@ YANEURAOU_GO_COMMAND="go byoyomi 1000" \
 ./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
 ```
 
+Public tanuki releases can be checked by pointing the same entrypoint at the
+matching tanuki engine branch and eval archive:
+
+```sh
+CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
+YANEURAOU_REPOSITORY_URL=https://github.com/nodchip/tanuki-.git \
+YANEURAOU_REF=tanuki-dr4-engine \
+YANEURAOU_EDITION=YANEURAOU_ENGINE_NNUE_HALFKP_1024X2_8_32 \
+YANEURAOU_EVAL_ARCHIVE_URL=https://github.com/nodchip/tanuki-/releases/download/tanuki-dr4/tanuki-dr4-2023-12-03.zip \
+YANEURAOU_FV_SCALE=20 \
+YANEURAOU_GO_COMMAND="go byoyomi 1000" \
+./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
+```
+
 This script uses the shared `../runpod-job-runner/scripts/run_job.py` helper
 for pod lifecycle management, then runs the shogi arena evaluation in this
 repository. Results are copied back under `runs/shogi/`.

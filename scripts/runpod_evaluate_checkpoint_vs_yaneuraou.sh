@@ -29,6 +29,8 @@ YANEURAOU_EVAL_DIR=${YANEURAOU_EVAL_DIR:-}
 YANEURAOU_THREADS=${YANEURAOU_THREADS:-}
 YANEURAOU_HASH_MB=${YANEURAOU_HASH_MB:-}
 YANEURAOU_FV_SCALE=${YANEURAOU_FV_SCALE:-}
+YANEURAOU_REPOSITORY_URL=${YANEURAOU_REPOSITORY_URL:-https://github.com/yaneurao/YaneuraOu.git}
+YANEURAOU_REF=${YANEURAOU_REF:-master}
 
 ARENA_REPOSITORY_URL=${ARENA_REPOSITORY_URL:-$(git config --get remote.origin.url)}
 ARENA_REF=${ARENA_REF:-main}
@@ -95,7 +97,7 @@ GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch '$ARENA_REF' '$ARENA_REPOSITO
 cd /root/shogi-arena-agent
 /root/intrep/.venv/bin/python -m pip install -e .
 cd /root
-GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/yaneurao/YaneuraOu.git YaneuraOu
+GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch '$YANEURAOU_REF' '$YANEURAOU_REPOSITORY_URL' YaneuraOu
 cd /root/YaneuraOu/source
 make -s -f Makefile -j\"\$(nproc)\" normal TARGET_CPU=AVX2 YANEURAOU_EDITION='$YANEURAOU_EDITION' COMPILER=g++ TARGET=YaneuraOu-runpod
 REMOTE_YANEURAOU_EVAL_DIR='$YANEURAOU_EVAL_DIR'
