@@ -7,9 +7,9 @@ import subprocess
 from pathlib import Path
 from time import perf_counter
 
+from shogi_arena_agent.generated_game_artifacts import GeneratedGameArtifacts
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.player_cli import PlayerSpec, add_player_arguments, player_spec_from_args, validate_player_arguments
-from shogi_arena_agent.shogi_game import ShogiGameRecord, shogi_game_record_to_json
 from shogi_arena_agent.shogi_generation import (
     ShogiGenerationConfig,
     generate_shogi_games,
@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     started_at = perf_counter()
-    with _GenerationArtifacts(Path(args.out)) as artifacts:
+    with GeneratedGameArtifacts(Path(args.out)) as artifacts:
         records = generate_shogi_games(
             _generation_config_from_args(args),
             checkpoint_evaluator_cls=ShogiMoveChoiceCheckpointEvaluator,
@@ -120,62 +120,6 @@ def _run_sharded_generation(args: argparse.Namespace) -> None:
         for shard_path in shard_paths:
             merged.write(shard_path.read_text(encoding="utf-8"))
     print(json.dumps(_aggregate_shard_summaries(summaries, wall_time_sec=perf_counter() - started_at, args=args), indent=2))
-
-
-class _GenerationArtifacts:
-    def __init__(self, out: Path) -> None:
-        self.out = out
-        self.events_out = out.with_name(f"{out.stem}.events.jsonl")
-        self.progress_out = out.with_name(f"{out.stem}.progress.json")
-        self._records_written = 0
-
-    def __enter__(self) -> "_GenerationArtifacts":
-        self.out.parent.mkdir(parents=True, exist_ok=True)
-        self.out.write_text("", encoding="utf-8")
-        self.events_out.write_text("", encoding="utf-8")
-        self.progress_out.write_text(
-            json.dumps({"completed_games": 0, "events_path": self.events_out.name}, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        self.write_event({"event": "generation_started", "games_path": self.out.name})
-        return self
-
-    def __exit__(self, *_args: object) -> None:
-        return None
-
-    def write_record(self, record: ShogiGameRecord) -> None:
-        with self.out.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(shogi_game_record_to_json(record), sort_keys=True) + "\n")
-        self._records_written += 1
-        self.write_event(
-            {
-                "event": "game_finished",
-                "completed_games": self._records_written,
-                "plies": len(record.transitions),
-                "end_reason": record.end_reason,
-                "winner": record.winner,
-            }
-        )
-        self._write_progress(
-            {
-                "completed_games": self._records_written,
-                "last_game_plies": len(record.transitions),
-                "last_game_end_reason": record.end_reason,
-                "last_game_winner": record.winner,
-            }
-        )
-
-    def write_progress(self, payload: dict[str, object]) -> None:
-        self.write_event({"event": "progress", **payload})
-        self._write_progress({"completed_games": self._records_written, **payload})
-        print("progress " + json.dumps(payload, sort_keys=True), file=sys.stderr, flush=True)
-
-    def write_event(self, payload: dict[str, object]) -> None:
-        with self.events_out.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(payload, sort_keys=True) + "\n")
-
-    def _write_progress(self, payload: dict[str, object]) -> None:
-        self.progress_out.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _shard_game_counts(games: int, worker_processes: int) -> list[int]:
