@@ -70,7 +70,7 @@ class MctsSearchSession:
             completed_simulations += self._run_simulation_batch(
                 root,
                 board,
-                max_count=min(self.config.evaluation_batch_size, self.config.simulation_count - completed_simulations),
+                max_count=min(self.config.nn_leaf_eval_batch_limit, self.config.simulation_count - completed_simulations),
             )
 
         self.last_policy_targets = visit_count_policy_targets(root)
@@ -194,7 +194,7 @@ class MctsSearchSession:
             output_per_sec=output_per_sec,
             **leaf_eval_batch_metrics(
                 self._leaf_eval_batch_sizes,
-                batch_size_limit=self.config.evaluation_batch_size,
+                batch_size_limit=self.config.nn_leaf_eval_batch_limit,
             ),
         )
 

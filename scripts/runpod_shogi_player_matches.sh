@@ -95,7 +95,7 @@ if [[ -n \"$PLAYER_B_CHECKPOINT\" ]]; then
   --player-a-move-selection-profile \"$MOVE_SELECTION_PROFILE\" \
   --player-a-move-selector mcts \
   --player-a-mcts-simulations \"$SIMULATIONS\" \
-  --player-a-mcts-evaluation-batch-size \"$NN_LEAF_EVAL_BATCH_LIMIT\" \
+  --player-a-mcts-nn-leaf-eval-batch-limit \"$NN_LEAF_EVAL_BATCH_LIMIT\" \
   --player-a-device cuda \
   --player-a-board-backend cshogi \
   --player-b-kind checkpoint \
@@ -103,7 +103,7 @@ if [[ -n \"$PLAYER_B_CHECKPOINT\" ]]; then
   --player-b-move-selection-profile \"$MOVE_SELECTION_PROFILE\" \
   --player-b-move-selector mcts \
   --player-b-mcts-simulations \"$SIMULATIONS\" \
-  --player-b-mcts-evaluation-batch-size \"$NN_LEAF_EVAL_BATCH_LIMIT\" \
+  --player-b-mcts-nn-leaf-eval-batch-limit \"$NN_LEAF_EVAL_BATCH_LIMIT\" \
   --player-b-device cuda \
   --player-b-board-backend cshogi \
   --out \"$OUTPUT_DIR/sampled-vs-checkpoint/games.jsonl\" \
@@ -126,7 +126,7 @@ make -s -C /root/YaneuraOu/source -f Makefile -j\"\$(nproc)\" normal TARGET_CPU=
   --player-a-move-selection-profile \"$MOVE_SELECTION_PROFILE\" \
   --player-a-move-selector mcts \
   --player-a-mcts-simulations \"$SIMULATIONS\" \
-  --player-a-mcts-evaluation-batch-size \"$NN_LEAF_EVAL_BATCH_LIMIT\" \
+  --player-a-mcts-nn-leaf-eval-batch-limit \"$NN_LEAF_EVAL_BATCH_LIMIT\" \
   --player-a-device cuda \
   --player-a-board-backend cshogi \
   --player-b-kind usi_engine \

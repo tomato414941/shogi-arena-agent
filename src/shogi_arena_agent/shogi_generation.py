@@ -11,7 +11,7 @@ from time import perf_counter
 from typing import Any
 
 from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
-from shogi_arena_agent.mcts_batch_search_executor import MctsBatchSearchExecutor
+from shogi_arena_agent.multi_position_mcts_search_executor import MultiPositionMctsSearchExecutor
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
     visit_sampling_move_selection_config,
@@ -57,7 +57,7 @@ def generate_shogi_games(
     progress_callback: GenerationProgressCallback | None = None,
 ) -> tuple[ShogiGameRecord, ...]:
     if config.concurrent_games_per_process > 1:
-        return _play_batched_checkpoint_mcts_games(
+        return _play_multi_position_checkpoint_mcts_games(
             config,
             checkpoint_evaluator_cls=checkpoint_evaluator_cls,
             record_callback=record_callback,
@@ -106,25 +106,25 @@ def records_summary(records: tuple[ShogiGameRecord, ...], *, wall_time_sec: floa
     )
     if inference_performance is not None:
         summary["inference_performance"] = inference_performance
-    batch_performance = _performance_summary(
-        transition.decision_telemetry.batch_performance
+    multi_position_search_performance = _performance_summary(
+        transition.decision_telemetry.multi_position_search_performance
         for record in records
         for transition in record.transitions
-        if transition.decision_telemetry is not None and transition.decision_telemetry.batch_performance is not None
+        if transition.decision_telemetry is not None and transition.decision_telemetry.multi_position_search_performance is not None
     )
-    if batch_performance is not None:
-        summary["batch_performance"] = batch_performance
+    if multi_position_search_performance is not None:
+        summary["multi_position_search_performance"] = multi_position_search_performance
     return summary
 
 
-def _play_batched_checkpoint_mcts_games(
+def _play_multi_position_checkpoint_mcts_games(
     config: ShogiGenerationConfig,
     *,
     checkpoint_evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator],
     record_callback: ShogiGameRecordCallback | None,
     progress_callback: GenerationProgressCallback | None,
 ) -> tuple[ShogiGameRecord, ...]:
-    _validate_batched_checkpoint_mcts_config(config)
+    _validate_multi_position_checkpoint_mcts_config(config)
     black_actor = _checkpoint_actor(
         config.black,
         name="black",
@@ -148,7 +148,7 @@ def _play_batched_checkpoint_mcts_games(
         evaluator_cls=checkpoint_evaluator_cls,
     )
     games = [
-        _ActiveBatchedGame(black_actor=black_actor, white_actor=white_actor, board_backend=config.board_backend)
+        _ActiveGeneratedGame(black_actor=black_actor, white_actor=white_actor, board_backend=config.board_backend)
         for _ in range(config.games)
     ]
     remaining = set(range(config.games))
@@ -163,11 +163,11 @@ def _play_batched_checkpoint_mcts_games(
                 batch_indexes = indexes[offset : offset + config.concurrent_games_per_process]
                 positions = [UsiPosition(position_command(games[index].moves)) for index in batch_indexes]
                 results = selector.select_moves(positions)
-                batch_performance = _performance_payload(selector.last_batch_performance)
+                multi_position_search_performance = _performance_payload(selector.last_multi_position_search_performance)
                 for game_index, result in zip(batch_indexes, results, strict=True):
                     telemetry = ShogiDecisionTelemetry(
                         move_performance=_performance_payload(result.performance),
-                        batch_performance=batch_performance,
+                        multi_position_search_performance=multi_position_search_performance,
                         search_evidence=result.search_evidence,
                     )
                     if game_index in remaining and games[game_index].apply_move(result.move, telemetry):
@@ -199,7 +199,7 @@ def _player_context(
     return player_context(spec, name=name)
 
 
-class _ActiveBatchedGame:
+class _ActiveGeneratedGame:
     def __init__(self, *, black_actor: ShogiActorSpec, white_actor: ShogiActorSpec, board_backend: str) -> None:
         self.board = new_board(backend=board_backend)
         self.black_actor = black_actor
@@ -273,7 +273,7 @@ class _ActiveBatchedGame:
         ]
 
 
-def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> None:
+def _validate_multi_position_checkpoint_mcts_config(config: ShogiGenerationConfig) -> None:
     for player in (config.black, config.white):
         if not isinstance(player, CheckpointPolicyPlayerSpec):
             raise SystemExit("--concurrent-games-per-process currently supports checkpoint-vs-checkpoint generation only")
@@ -283,7 +283,7 @@ def _validate_batched_checkpoint_mcts_config(config: ShogiGenerationConfig) -> N
             raise SystemExit("--concurrent-games-per-process does not support move time limits yet")
         if player.mcts_root_reuse:
             raise SystemExit(
-                "--concurrent-games-per-process uses MctsBatchSearchExecutor, which does not maintain per-game search sessions"
+                "--concurrent-games-per-process uses MultiPositionMctsSearchExecutor, which does not maintain per-game search sessions"
             )
 
 
@@ -292,16 +292,16 @@ def _checkpoint_selector(
     *,
     board_backend: str,
     evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator],
-) -> MctsBatchSearchExecutor:
+) -> MultiPositionMctsSearchExecutor:
     evaluator = evaluator_cls.from_checkpoint(
         player.checkpoint,
         device=player.device,
     )
-    return MctsBatchSearchExecutor(
+    return MultiPositionMctsSearchExecutor(
         evaluator=evaluator,
         config=MctsConfig(
             simulation_count=player.mcts_simulations,
-            evaluation_batch_size=player.mcts_evaluation_batch_size,
+            nn_leaf_eval_batch_limit=player.mcts_nn_leaf_eval_batch_limit,
             board_backend=board_backend,
             root_reuse=player.mcts_root_reuse,
         ),
@@ -333,9 +333,7 @@ def _checkpoint_actor(
             "move_selection_temperature_plies": player.move_selection_temperature_plies,
             "move_selector": player.move_selector,
             "mcts_simulations_per_move": player.mcts_simulations,
-            "nn_leaf_eval_batch_limit": player.mcts_evaluation_batch_size,
-            "simulations": player.mcts_simulations,
-            "evaluation_batch_size": player.mcts_evaluation_batch_size,
+            "nn_leaf_eval_batch_limit": player.mcts_nn_leaf_eval_batch_limit,
             "move_time_limit_sec": player.mcts_move_time_limit_sec,
             "root_reuse": player.mcts_root_reuse,
             "device": player.device,
@@ -370,7 +368,7 @@ def _performance_payload(performance: object | None) -> dict[str, object] | None
 
 
 def _progress_payload(
-    games: list[_ActiveBatchedGame],
+    games: list[_ActiveGeneratedGame],
     *,
     remaining: set[int],
     ply: int,

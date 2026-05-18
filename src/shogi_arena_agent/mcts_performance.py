@@ -21,7 +21,7 @@ class MctsMovePerformance:
 
 
 @dataclass(frozen=True)
-class MctsBatchPerformance:
+class MultiPositionMctsPerformance:
     request_wall_time_sec: float
     position_count: int
     completed_simulations: int

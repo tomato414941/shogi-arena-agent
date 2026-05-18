@@ -64,12 +64,10 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].white_actor.settings["move_selector"], "mcts")
         self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "visit-sampling")
         self.assertEqual(records[0].white_actor.settings["move_selection_profile"], "visit-sampling")
-        self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 1)
-        self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 1)
-        self.assertEqual(records[0].black_actor.settings["mcts_simulations_per_move"], 16)
-        self.assertEqual(records[0].white_actor.settings["mcts_simulations_per_move"], 16)
         self.assertEqual(records[0].black_actor.settings["nn_leaf_eval_batch_limit"], 1)
         self.assertEqual(records[0].white_actor.settings["nn_leaf_eval_batch_limit"], 1)
+        self.assertEqual(records[0].black_actor.settings["mcts_simulations_per_move"], 16)
+        self.assertEqual(records[0].white_actor.settings["mcts_simulations_per_move"], 16)
         self.assertIsNone(records[0].black_actor.settings["move_time_limit_sec"])
         self.assertIsNone(records[0].white_actor.settings["move_time_limit_sec"])
         self.assertFalse(records[0].black_actor.settings["root_reuse"])
@@ -92,7 +90,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--black-checkpoint",
                         "black.pt",
-                        "--black-mcts-evaluation-batch-size",
+                        "--black-mcts-nn-leaf-eval-batch-limit",
                         "8",
                         "--black-move-selection-profile",
                         "visit-sampling",
@@ -107,7 +105,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "checkpoint",
                         "--white-checkpoint",
                         "white.pt",
-                        "--white-mcts-evaluation-batch-size",
+                        "--white-mcts-nn-leaf-eval-batch-limit",
                         "16",
                         "--white-mcts-move-time-limit-sec",
                         "9.0",
@@ -122,8 +120,8 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
             records = load_shogi_game_records_jsonl(output_path)
 
-        self.assertEqual(records[0].black_actor.settings["evaluation_batch_size"], 8)
-        self.assertEqual(records[0].white_actor.settings["evaluation_batch_size"], 16)
+        self.assertEqual(records[0].black_actor.settings["nn_leaf_eval_batch_limit"], 8)
+        self.assertEqual(records[0].white_actor.settings["nn_leaf_eval_batch_limit"], 16)
         self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "visit-sampling")
         self.assertEqual(records[0].black_actor.settings["move_selection_temperature"], 0.75)
         self.assertEqual(records[0].black_actor.settings["move_selection_temperature_plies"], 12)
@@ -219,7 +217,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual([len(session.positions) for session in black_factory.sessions], [2, 2])
         self.assertEqual([len(session.positions) for session in white_factory.sessions], [1, 1])
 
-    def test_parallel_checkpoint_mcts_batches_games(self) -> None:
+    def test_parallel_checkpoint_mcts_batches_across_positions(self) -> None:
         module = _load_script_module()
         batch_sizes: list[int] = []
 
@@ -245,7 +243,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "black.pt",
                         "--black-mcts-simulations",
                         "2",
-                        "--black-mcts-evaluation-batch-size",
+                        "--black-mcts-nn-leaf-eval-batch-limit",
                         "8",
                         "--white-kind",
                         "checkpoint",
@@ -253,7 +251,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                         "white.pt",
                         "--white-mcts-simulations",
                         "2",
-                        "--white-mcts-evaluation-batch-size",
+                        "--white-mcts-nn-leaf-eval-batch-limit",
                         "8",
                         "--games",
                         "4",
@@ -276,7 +274,7 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry)
         assert records[0].transitions[0].decision_telemetry is not None
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry.move_performance)
-        self.assertIsNotNone(records[0].transitions[0].decision_telemetry.batch_performance)
+        self.assertIsNotNone(records[0].transitions[0].decision_telemetry.multi_position_search_performance)
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry.search_evidence)
         assert records[0].transitions[0].decision_telemetry.search_evidence is not None
         self.assertIn(
@@ -285,11 +283,11 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         )
         self.assertIn("generation_wall_time_sec", summary)
         self.assertIn("inference_performance", summary)
-        self.assertIn("batch_performance", summary)
-        self.assertIn("phase_wall_time_sec_total", summary["batch_performance"])
-        self.assertGreater(summary["batch_performance"]["actual_nn_leaf_eval_batch_size_avg"], 0.0)
-        self.assertIn("actual_nn_leaf_eval_batch_size_histogram", summary["batch_performance"])
-        self.assertIn("actual_nn_leaf_eval_batch_size_fill_ratio_avg", summary["batch_performance"])
+        self.assertIn("multi_position_search_performance", summary)
+        self.assertIn("phase_wall_time_sec_total", summary["multi_position_search_performance"])
+        self.assertGreater(summary["multi_position_search_performance"]["actual_nn_leaf_eval_batch_size_avg"], 0.0)
+        self.assertIn("actual_nn_leaf_eval_batch_size_histogram", summary["multi_position_search_performance"])
+        self.assertIn("actual_nn_leaf_eval_batch_size_fill_ratio_avg", summary["multi_position_search_performance"])
 
     def test_parallel_checkpoint_mcts_rejects_root_reuse(self) -> None:
         module = _load_script_module()

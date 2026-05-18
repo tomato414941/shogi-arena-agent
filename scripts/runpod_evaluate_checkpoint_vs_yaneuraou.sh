@@ -213,7 +213,7 @@ trap cleanup_gpu_sampler EXIT
   --player-a-checkpoint '$REMOTE_CHECKPOINT' \\
   --player-a-move-selector mcts \\
   --player-a-mcts-simulations '$MCTS_SIMULATIONS' \\
-  --player-a-mcts-evaluation-batch-size '$MCTS_BATCH_SIZE' \\
+  --player-a-mcts-nn-leaf-eval-batch-limit '$MCTS_BATCH_SIZE' \\
   --player-a-mcts-move-time-limit-sec '$MCTS_MOVE_TIME_LIMIT_SEC' \\
   --player-a-device cuda \\
   --player-a-board-backend '$BOARD_BACKEND' \\

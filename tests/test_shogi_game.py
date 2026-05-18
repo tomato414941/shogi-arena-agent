@@ -184,7 +184,7 @@ class ShogiGameTest(unittest.TestCase):
                     done=True,
                     decision_telemetry=ShogiDecisionTelemetry(
                         move_performance={"request_wall_time_sec": 0.4},
-                        batch_performance={"position_count": 4},
+                        multi_position_search_performance={"position_count": 4},
                         search_evidence={"mcts_root_child_visit_counts": {"7g7f": 3, "2g2f": 1}},
                     ),
                 ),
@@ -198,28 +198,6 @@ class ShogiGameTest(unittest.TestCase):
             loaded = load_shogi_game_records_jsonl(path)
 
         self.assertEqual(loaded, (result,))
-
-    def test_loads_legacy_performance_info_lines_as_decision_telemetry(self) -> None:
-        payload = shogi_game_record_to_json(play_shogi_game(max_plies=1))
-        transition = payload["transitions"][0]
-        assert isinstance(transition, dict)
-        transition["decision_usi_info_lines"] = [
-            "info depth 1 nodes 1 pv 7g7f",
-            'info string intrep_performance {"request_wall_time_sec": 0.4}',
-            'info string intrep_batch_performance {"position_count": 4}',
-        ]
-
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "games.jsonl"
-            path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
-            loaded = load_shogi_game_records_jsonl(path)
-
-        loaded_transition = loaded[0].transitions[0]
-        self.assertEqual(loaded_transition.decision_usi_info_lines, ("info depth 1 nodes 1 pv 7g7f",))
-        self.assertIsNotNone(loaded_transition.decision_telemetry)
-        assert loaded_transition.decision_telemetry is not None
-        self.assertEqual(loaded_transition.decision_telemetry.move_performance, {"request_wall_time_sec": 0.4})
-        self.assertEqual(loaded_transition.decision_telemetry.batch_performance, {"position_count": 4})
 
     def test_play_shogi_game_starts_policy_session_per_game(self) -> None:
         black_policy = SessionPolicyFactory("7g7f")

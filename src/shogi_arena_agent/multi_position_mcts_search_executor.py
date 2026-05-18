@@ -9,7 +9,7 @@ from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_u
 from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, visit_sampling_move_selection_config
 from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator, UniformPolicyValueEvaluator
 from shogi_arena_agent.mcts_performance import (
-    MctsBatchPerformance,
+    MultiPositionMctsPerformance,
     MctsMovePerformance,
     leaf_eval_batch_metrics,
 )
@@ -35,10 +35,11 @@ class MctsMoveResult:
     performance: MctsMovePerformance
 
 
-class MctsBatchSearchExecutor:
+class MultiPositionMctsSearchExecutor:
     """Run temporary MCTS searches for multiple positions in one NN evaluation flow.
 
     This executor does not own per-game search sessions or persistent roots.
+    It batches NN leaf evaluations across positions, not within one tree.
     """
 
     def __init__(
@@ -52,82 +53,82 @@ class MctsBatchSearchExecutor:
         self.config = config or MctsConfig()
         self.move_selection = move_selection or visit_sampling_move_selection_config()
         self._rng = random.Random(self.move_selection.seed)
-        self.last_batch_performance: MctsBatchPerformance | None = None
+        self.last_multi_position_search_performance: MultiPositionMctsPerformance | None = None
 
     def select_moves(self, positions: Sequence[UsiPosition]) -> list[MctsMoveResult]:
         started_at = perf_counter()
-        batch_stats = _BatchSearchStats(
+        search_stats = _MultiPositionSearchStats(
             position_count=len(positions),
-            leaf_eval_batch_size_limit=self.config.evaluation_batch_size,
+            leaf_eval_batch_size_limit=self.config.nn_leaf_eval_batch_limit,
         )
         states = [
-            _BatchedSearchState.from_position(
+            _MultiPositionSearchState.from_position(
                 position,
                 self.config.simulation_count,
                 board_backend=self.config.board_backend,
                 move_selection=self.move_selection,
                 rng=self._rng,
-                leaf_eval_batch_size_limit=self.config.evaluation_batch_size,
+                leaf_eval_batch_size_limit=self.config.nn_leaf_eval_batch_limit,
             )
             for position in positions
         ]
         for state in states:
-            batch_stats.add_phase_times(state.phase_wall_time_sec)
+            search_stats.add_phase_times(state.phase_wall_time_sec)
         active_states = [state for state in states if state.legal_moves]
         if active_states:
-            self._expand_roots(active_states, batch_stats)
+            self._expand_roots(active_states, search_stats)
         while any(state.remaining_simulations > 0 for state in active_states):
-            pending, made_progress = self._collect_pending_leaf_evaluations(active_states, batch_stats)
+            pending, made_progress = self._collect_pending_leaf_evaluations(active_states, search_stats)
             if pending:
-                self._evaluate_pending(pending, batch_stats)
+                self._evaluate_pending(pending, search_stats)
             elif not made_progress:
                 break
-        self.last_batch_performance = batch_stats.to_performance(started_at)
+        self.last_multi_position_search_performance = search_stats.to_performance(started_at)
         return [state.to_result() for state in states]
 
     def _collect_pending_leaf_evaluations(
         self,
-        active_states: Sequence["_BatchedSearchState"],
-        batch_stats: "_BatchSearchStats",
-    ) -> tuple[list[tuple["_BatchedSearchState", PendingSimulation]], bool]:
-        pending: list[tuple[_BatchedSearchState, PendingSimulation]] = []
+        active_states: Sequence["_MultiPositionSearchState"],
+        search_stats: "_MultiPositionSearchStats",
+    ) -> tuple[list[tuple["_MultiPositionSearchState", PendingSimulation]], bool]:
+        pending: list[tuple[_MultiPositionSearchState, PendingSimulation]] = []
         made_progress = False
         for state in active_states:
             if state.remaining_simulations <= 0:
                 continue
-            simulation, progressed = self._select_leaf_for_evaluation(state, batch_stats)
+            simulation, progressed = self._select_leaf_for_evaluation(state, search_stats)
             made_progress = made_progress or progressed
             if simulation is None:
                 continue
             pending.append((state, simulation))
-            if len(pending) >= self.config.evaluation_batch_size:
+            if len(pending) >= self.config.nn_leaf_eval_batch_limit:
                 break
         return pending, made_progress
 
     def _select_leaf_for_evaluation(
         self,
-        state: "_BatchedSearchState",
-        batch_stats: "_BatchSearchStats",
+        state: "_MultiPositionSearchState",
+        search_stats: "_MultiPositionSearchStats",
     ) -> tuple[PendingSimulation | None, bool]:
         board_copy_started_at = perf_counter()
         board = copy_board(state.board)
-        self._record_phase_time(state, batch_stats, "board_copy", perf_counter() - board_copy_started_at)
+        self._record_phase_time(state, search_stats, "board_copy", perf_counter() - board_copy_started_at)
 
         selection_started_at = perf_counter()
         simulation = _select_pending_simulation(state.root, board, c_puct=self.config.c_puct)
-        self._record_phase_time(state, batch_stats, "selection", perf_counter() - selection_started_at)
+        self._record_phase_time(state, search_stats, "selection", perf_counter() - selection_started_at)
         if simulation is None:
             state.remaining_simulations = 0
             return None, False
         if simulation.board.is_game_over():
-            self._complete_simulation(state, batch_stats, simulation.path, value=-1.0)
+            self._complete_simulation(state, search_stats, simulation.path, value=-1.0)
             return None, True
 
         legal_moves_started_at = perf_counter()
         legal_moves = legal_move_usis(simulation.board)
-        self._record_phase_time(state, batch_stats, "legal_moves", perf_counter() - legal_moves_started_at)
+        self._record_phase_time(state, search_stats, "legal_moves", perf_counter() - legal_moves_started_at)
         if not legal_moves:
-            self._complete_simulation(state, batch_stats, simulation.path, value=-1.0)
+            self._complete_simulation(state, search_stats, simulation.path, value=-1.0)
             return None, True
 
         simulation.node.pending = True
@@ -135,63 +136,63 @@ class MctsBatchSearchExecutor:
 
     def _complete_simulation(
         self,
-        state: "_BatchedSearchState",
-        batch_stats: "_BatchSearchStats",
+        state: "_MultiPositionSearchState",
+        search_stats: "_MultiPositionSearchStats",
         path: list[MctsNode],
         *,
         value: float,
     ) -> None:
         backup_started_at = perf_counter()
         _backpropagate_path(path, value)
-        self._record_phase_time(state, batch_stats, "backup", perf_counter() - backup_started_at)
+        self._record_phase_time(state, search_stats, "backup", perf_counter() - backup_started_at)
         state.completed_simulations += 1
-        batch_stats.completed_simulations += 1
+        search_stats.completed_simulations += 1
         state.remaining_simulations -= 1
 
     @staticmethod
     def _record_phase_time(
-        state: "_BatchedSearchState",
-        batch_stats: "_BatchSearchStats",
+        state: "_MultiPositionSearchState",
+        search_stats: "_MultiPositionSearchStats",
         name: str,
         elapsed: float,
     ) -> None:
         state.add_phase_time(name, elapsed)
-        batch_stats.add_phase_time(name, elapsed)
+        search_stats.add_phase_time(name, elapsed)
 
-    def _expand_roots(self, states: Sequence["_BatchedSearchState"], batch_stats: "_BatchSearchStats") -> None:
+    def _expand_roots(self, states: Sequence["_MultiPositionSearchState"], search_stats: "_MultiPositionSearchStats") -> None:
         started_at = perf_counter()
         evaluations = self.evaluator.evaluate_batch(tuple((state.board, state.legal_moves) for state in states))
         elapsed = perf_counter() - started_at
-        batch_stats.model_call_count += 1
-        batch_stats.model_wall_time_sec += elapsed
+        search_stats.model_call_count += 1
+        search_stats.model_wall_time_sec += elapsed
         if len(evaluations) != len(states):
             raise ValueError("batch evaluator must return one evaluation per request")
         for state, (priors, _value) in zip(states, evaluations, strict=True):
             expand_started_at = perf_counter()
             _expand_node_with_evaluation(state.root, state.legal_moves, priors)
             expand_elapsed = perf_counter() - expand_started_at
-            self._record_phase_time(state, batch_stats, "expand", expand_elapsed)
+            self._record_phase_time(state, search_stats, "expand", expand_elapsed)
             state.model_call_count += 1
             state.model_wall_time_sec += elapsed
 
     def _evaluate_pending(
         self,
-        pending: Sequence[tuple["_BatchedSearchState", PendingSimulation]],
-        batch_stats: "_BatchSearchStats",
+        pending: Sequence[tuple["_MultiPositionSearchState", PendingSimulation]],
+        search_stats: "_MultiPositionSearchStats",
     ) -> None:
         batch_build_started_at = perf_counter()
         requests = tuple((simulation.board, simulation.legal_moves) for _state, simulation in pending)
         batch_build_elapsed = perf_counter() - batch_build_started_at
-        batch_stats.add_phase_time("batch_build", batch_build_elapsed)
+        search_stats.add_phase_time("batch_build", batch_build_elapsed)
         for state, _simulation in pending:
             state.add_phase_time("batch_build", batch_build_elapsed)
 
         started_at = perf_counter()
         evaluations = self.evaluator.evaluate_batch(requests)
         elapsed = perf_counter() - started_at
-        batch_stats.model_call_count += 1
-        batch_stats.model_wall_time_sec += elapsed
-        batch_stats.add_leaf_eval_batch_size(len(pending))
+        search_stats.model_call_count += 1
+        search_stats.model_wall_time_sec += elapsed
+        search_stats.add_leaf_eval_batch_size(len(pending))
         if len(evaluations) != len(pending):
             raise ValueError("batch evaluator must return one evaluation per request")
         for (state, simulation), (priors, value) in zip(pending, evaluations, strict=True):
@@ -200,14 +201,14 @@ class MctsBatchSearchExecutor:
             expand_started_at = perf_counter()
             _expand_node_with_evaluation(simulation.path[-1], simulation.legal_moves, priors)
             expand_elapsed = perf_counter() - expand_started_at
-            self._record_phase_time(state, batch_stats, "expand", expand_elapsed)
-            self._complete_simulation(state, batch_stats, simulation.path, value=max(-1.0, min(1.0, float(value))))
+            self._record_phase_time(state, search_stats, "expand", expand_elapsed)
+            self._complete_simulation(state, search_stats, simulation.path, value=max(-1.0, min(1.0, float(value))))
             state.model_call_count += 1
             state.model_wall_time_sec += elapsed
 
 
 @dataclass
-class _BatchedSearchState:
+class _MultiPositionSearchState:
     board: ShogiBoard
     legal_moves: tuple[str, ...]
     root: MctsNode
@@ -233,7 +234,7 @@ class _BatchedSearchState:
         move_selection: MoveSelectionConfig,
         rng: random.Random,
         leaf_eval_batch_size_limit: int,
-    ) -> "_BatchedSearchState":
+    ) -> "_MultiPositionSearchState":
         position_started_at = perf_counter()
         board = board_from_position(position, backend=board_backend)
         position_elapsed = perf_counter() - position_started_at
@@ -264,7 +265,7 @@ class _BatchedSearchState:
                 move=RESIGN_MOVE,
                 policy_targets=None,
                 search_evidence=None,
-                performance=_batched_performance_since(
+                performance=_multi_position_move_performance_since(
                     self.started_at,
                     model_call_count=self.model_call_count,
                     model_wall_time_sec=self.model_wall_time_sec,
@@ -280,7 +281,7 @@ class _BatchedSearchState:
             search_evidence={
                 "mcts_root_child_visit_counts": root_child_visit_counts(self.root),
             },
-            performance=_batched_performance_since(
+            performance=_multi_position_move_performance_since(
                 self.started_at,
                 model_call_count=self.model_call_count,
                 model_wall_time_sec=self.model_wall_time_sec,
@@ -293,7 +294,7 @@ class _BatchedSearchState:
 
 
 @dataclass
-class _BatchSearchStats:
+class _MultiPositionSearchStats:
     position_count: int
     leaf_eval_batch_size_limit: int
     completed_simulations: int = 0
@@ -312,13 +313,13 @@ class _BatchSearchStats:
     def add_leaf_eval_batch_size(self, size: int) -> None:
         self.leaf_eval_batch_sizes.append(size)
 
-    def to_performance(self, started_at: float) -> MctsBatchPerformance:
+    def to_performance(self, started_at: float) -> MultiPositionMctsPerformance:
         request_wall_time_sec = perf_counter() - started_at
         non_model_wall_time_sec = max(0.0, request_wall_time_sec - self.model_wall_time_sec)
         output_per_sec = self.completed_simulations / request_wall_time_sec if request_wall_time_sec > 0 else 0.0
         phase_times = dict(sorted(self.phase_wall_time_sec.items()))
         phase_times["unattributed"] = max(0.0, non_model_wall_time_sec - sum(phase_times.values()))
-        return MctsBatchPerformance(
+        return MultiPositionMctsPerformance(
             request_wall_time_sec=request_wall_time_sec,
             position_count=self.position_count,
             completed_simulations=self.completed_simulations,
@@ -358,7 +359,7 @@ def _backpropagate_path(path: list[MctsNode], value: float) -> None:
         value = -value
 
 
-def _batched_performance_since(
+def _multi_position_move_performance_since(
     started_at: float,
     *,
     model_call_count: int,

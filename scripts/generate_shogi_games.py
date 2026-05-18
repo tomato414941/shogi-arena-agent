@@ -171,7 +171,7 @@ def _player_command_args(args: argparse.Namespace, prefix: str) -> list[str]:
         "move_selection_temperature_plies",
         "move_selector",
         "mcts_simulations",
-        "mcts_evaluation_batch_size",
+        "mcts_nn_leaf_eval_batch_limit",
         "mcts_move_time_limit_sec",
         "mcts_root_reuse",
         "device",
@@ -224,7 +224,7 @@ def _aggregate_shard_summaries(
         "seed": args.seed,
         "shards": summaries,
     }
-    for name in ("inference_performance", "batch_performance"):
+    for name in ("inference_performance", "multi_position_search_performance"):
         performance = _aggregate_performance_summaries(
             [summary[name] for summary in summaries if isinstance(summary.get(name), dict)]
         )

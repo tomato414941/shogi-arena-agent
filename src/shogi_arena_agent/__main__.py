@@ -11,7 +11,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--checkpoint", help="Path to a shogi move-choice checkpoint.")
     parser.add_argument("--move-selector", choices=("direct", "mcts"), default="direct")
     parser.add_argument("--mcts-simulations", type=int, default=16)
-    parser.add_argument("--mcts-evaluation-batch-size", type=int, default=1)
+    parser.add_argument("--mcts-nn-leaf-eval-batch-limit", type=int, default=1)
     parser.add_argument("--mcts-move-time-limit-sec", type=float)
     parser.add_argument("--mcts-root-reuse", action="store_true")
     parser.add_argument("--board-backend", choices=BOARD_BACKENDS, default="python-shogi")
@@ -39,7 +39,7 @@ def build_engine(args: argparse.Namespace) -> UsiEngine:
             evaluator=evaluator,
             config=MctsConfig(
                 simulation_count=args.mcts_simulations,
-                evaluation_batch_size=args.mcts_evaluation_batch_size,
+                nn_leaf_eval_batch_limit=args.mcts_nn_leaf_eval_batch_limit,
                 move_time_limit_sec=args.mcts_move_time_limit_sec,
                 board_backend=args.board_backend,
                 root_reuse=args.mcts_root_reuse,

@@ -21,7 +21,7 @@ class ShogiActorSpec:
 @dataclass(frozen=True)
 class ShogiDecisionTelemetry:
     move_performance: dict[str, object] | None = None
-    batch_performance: dict[str, object] | None = None
+    multi_position_search_performance: dict[str, object] | None = None
     search_evidence: dict[str, object] | None = None
 
 
@@ -263,8 +263,6 @@ def _transition_record_to_json(record: ShogiTransitionRecord) -> dict[str, objec
 def _transition_record_from_json(data: dict[str, object]) -> ShogiTransitionRecord:
     info_lines = tuple(str(line) for line in cast(list[object], data.get("decision_usi_info_lines", [])))
     telemetry = _decision_telemetry_from_json(data.get("decision_telemetry"))
-    if telemetry is None:
-        info_lines, telemetry = _migrate_legacy_performance_info_lines(info_lines)
     return ShogiTransitionRecord(
         ply=int(data["ply"]),
         side=str(data["side"]),
@@ -317,8 +315,8 @@ def _decision_telemetry_to_json(telemetry: ShogiDecisionTelemetry) -> dict[str, 
     payload: dict[str, object] = {}
     if telemetry.move_performance is not None:
         payload["move_performance"] = telemetry.move_performance
-    if telemetry.batch_performance is not None:
-        payload["batch_performance"] = telemetry.batch_performance
+    if telemetry.multi_position_search_performance is not None:
+        payload["multi_position_search_performance"] = telemetry.multi_position_search_performance
     if telemetry.search_evidence is not None:
         payload["search_evidence"] = telemetry.search_evidence
     return payload
@@ -330,36 +328,9 @@ def _decision_telemetry_from_json(value: object) -> ShogiDecisionTelemetry | Non
     data = _object_dict(value)
     return ShogiDecisionTelemetry(
         move_performance=_optional_object_dict(data.get("move_performance")),
-        batch_performance=_optional_object_dict(data.get("batch_performance")),
+        multi_position_search_performance=_optional_object_dict(data.get("multi_position_search_performance")),
         search_evidence=_optional_object_dict(data.get("search_evidence")),
     )
-
-
-def _migrate_legacy_performance_info_lines(
-    info_lines: tuple[str, ...],
-) -> tuple[tuple[str, ...], ShogiDecisionTelemetry | None]:
-    user_info_lines: list[str] = []
-    move_performance: dict[str, object] | None = None
-    batch_performance: dict[str, object] | None = None
-    for line in info_lines:
-        if line.startswith("info string intrep_performance "):
-            move_performance = _parse_legacy_performance_payload(line, prefix="info string intrep_performance ")
-            continue
-        if line.startswith("info string intrep_batch_performance "):
-            batch_performance = _parse_legacy_performance_payload(line, prefix="info string intrep_batch_performance ")
-            continue
-        user_info_lines.append(line)
-    if move_performance is None and batch_performance is None:
-        return tuple(user_info_lines), None
-    return tuple(user_info_lines), ShogiDecisionTelemetry(
-        move_performance=move_performance,
-        batch_performance=batch_performance,
-    )
-
-
-def _parse_legacy_performance_payload(line: str, *, prefix: str) -> dict[str, object]:
-    payload = json.loads(line[len(prefix) :])
-    return _object_dict(payload)
 
 
 def _dataclass_payload(value: object) -> dict[str, object]:

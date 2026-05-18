@@ -42,7 +42,7 @@ class CheckpointPolicyPlayerSpec:
     move_selection_temperature_plies: int | None = None
     move_selector: str = "mcts"
     mcts_simulations: int = 16
-    mcts_evaluation_batch_size: int = 1
+    mcts_nn_leaf_eval_batch_limit: int = 1
     mcts_move_time_limit_sec: float | None = None
     mcts_root_reuse: bool = False
     device: str = "cpu"
@@ -77,7 +77,7 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-move-selection-temperature-plies", type=int)
     parser.add_argument(f"--{prefix}-move-selector", choices=("direct", "mcts"), default="mcts")
     parser.add_argument(f"--{prefix}-mcts-simulations", type=int, default=16)
-    parser.add_argument(f"--{prefix}-mcts-evaluation-batch-size", type=int, default=1)
+    parser.add_argument(f"--{prefix}-mcts-nn-leaf-eval-batch-limit", type=int, default=1)
     parser.add_argument(f"--{prefix}-mcts-move-time-limit-sec", type=float)
     parser.add_argument(f"--{prefix}-mcts-root-reuse", action="store_true")
     parser.add_argument(f"--{prefix}-device", default="cpu")
@@ -117,7 +117,7 @@ def player_spec_from_args(args: argparse.Namespace, prefix: str, *, seed: int | 
             move_selection_temperature_plies=move_selection_temperature_plies,
             move_selector=_arg(args, prefix, "move_selector"),
             mcts_simulations=_arg(args, prefix, "mcts_simulations"),
-            mcts_evaluation_batch_size=_arg(args, prefix, "mcts_evaluation_batch_size"),
+            mcts_nn_leaf_eval_batch_limit=_arg(args, prefix, "mcts_nn_leaf_eval_batch_limit"),
             mcts_move_time_limit_sec=_arg(args, prefix, "mcts_move_time_limit_sec"),
             mcts_root_reuse=_arg(args, prefix, "mcts_root_reuse"),
             device=_arg(args, prefix, "device"),
@@ -143,7 +143,7 @@ def build_static_player(spec: PlayerSpec, *, name: str) -> BuiltPlayer | None:
     if isinstance(spec, CheckpointPolicyPlayerSpec):
         mcts_config = MctsConfig(
             simulation_count=spec.mcts_simulations,
-            evaluation_batch_size=spec.mcts_evaluation_batch_size,
+            nn_leaf_eval_batch_limit=spec.mcts_nn_leaf_eval_batch_limit,
             move_time_limit_sec=spec.mcts_move_time_limit_sec,
             board_backend=spec.board_backend,
             root_reuse=spec.mcts_root_reuse,
@@ -173,9 +173,7 @@ def build_static_player(spec: PlayerSpec, *, name: str) -> BuiltPlayer | None:
                     "move_selection_temperature_plies": spec.move_selection_temperature_plies,
                     "move_selector": spec.move_selector,
                     "mcts_simulations_per_move": mcts_config.simulation_count if spec.move_selector == "mcts" else None,
-                    "nn_leaf_eval_batch_limit": mcts_config.evaluation_batch_size if spec.move_selector == "mcts" else None,
-                    "simulations": mcts_config.simulation_count if spec.move_selector == "mcts" else None,
-                    "evaluation_batch_size": mcts_config.evaluation_batch_size if spec.move_selector == "mcts" else None,
+                    "nn_leaf_eval_batch_limit": mcts_config.nn_leaf_eval_batch_limit if spec.move_selector == "mcts" else None,
                     "move_time_limit_sec": mcts_config.move_time_limit_sec if spec.move_selector == "mcts" else None,
                     "root_reuse": mcts_config.root_reuse if spec.move_selector == "mcts" else None,
                     "device": spec.device,

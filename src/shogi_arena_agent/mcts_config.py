@@ -9,7 +9,7 @@ from shogi_arena_agent.board_backend import validate_board_backend
 class MctsConfig:
     simulation_count: int = 32
     c_puct: float = 1.5
-    evaluation_batch_size: int = 1
+    nn_leaf_eval_batch_limit: int = 1
     move_time_limit_sec: float | None = None
     board_backend: str = "python-shogi"
     root_reuse: bool = False
@@ -19,8 +19,8 @@ class MctsConfig:
             raise ValueError("simulation_count must be positive")
         if self.c_puct <= 0.0:
             raise ValueError("c_puct must be positive")
-        if self.evaluation_batch_size <= 0:
-            raise ValueError("evaluation_batch_size must be positive")
+        if self.nn_leaf_eval_batch_limit <= 0:
+            raise ValueError("nn_leaf_eval_batch_limit must be positive")
         if self.move_time_limit_sec is not None and self.move_time_limit_sec < 0.0:
             raise ValueError("move_time_limit_sec must be non-negative")
         validate_board_backend(self.board_backend)

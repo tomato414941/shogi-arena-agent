@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
-from shogi_arena_agent.mcts_batch_search_executor import MctsBatchSearchExecutor
+from shogi_arena_agent.multi_position_mcts_search_executor import MultiPositionMctsSearchExecutor
 from shogi_arena_agent.mcts_config import MctsConfig, visit_sampling_move_selection_config
 from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator
 from shogi_arena_agent.mcts_move_selector import (
@@ -124,7 +124,7 @@ class MctsMoveSelectorTest(unittest.TestCase):
 
     def test_batches_leaf_evaluations(self) -> None:
         evaluator = BatchCountingEvaluator()
-        policy = MctsMoveSelector(evaluator, config=MctsConfig(simulation_count=8, evaluation_batch_size=4))
+        policy = MctsMoveSelector(evaluator, config=MctsConfig(simulation_count=8, nn_leaf_eval_batch_limit=4))
 
         policy.select_move(UsiPosition())
 
@@ -175,8 +175,8 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertIsNot(first_session, second_session)
 
     def test_self_play_selection_can_sample_different_root_moves(self) -> None:
-        selector = MctsBatchSearchExecutor(
-            config=MctsConfig(simulation_count=8, evaluation_batch_size=8),
+        selector = MultiPositionMctsSearchExecutor(
+            config=MctsConfig(simulation_count=8, nn_leaf_eval_batch_limit=8),
             move_selection=visit_sampling_move_selection_config(seed=1),
         )
 
@@ -184,9 +184,9 @@ class MctsMoveSelectorTest(unittest.TestCase):
 
         self.assertGreater(len({result.move for result in results}), 1)
 
-    def test_batch_executor_batches_across_positions(self) -> None:
+    def test_multi_position_executor_batches_across_positions(self) -> None:
         evaluator = BatchCountingEvaluator()
-        selector = MctsBatchSearchExecutor(evaluator, config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+        selector = MultiPositionMctsSearchExecutor(evaluator, config=MctsConfig(simulation_count=4, nn_leaf_eval_batch_limit=8))
 
         results = selector.select_moves(
             [
@@ -200,8 +200,8 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertTrue(all(result.search_evidence is not None for result in results))
         self.assertIn(2, evaluator.batch_sizes)
 
-    def test_batch_executor_records_phase_timings(self) -> None:
-        selector = MctsBatchSearchExecutor(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+    def test_multi_position_executor_records_phase_timings(self) -> None:
+        selector = MultiPositionMctsSearchExecutor(config=MctsConfig(simulation_count=4, nn_leaf_eval_batch_limit=8))
 
         result = selector.select_moves([UsiPosition()])[0]
 
@@ -212,12 +212,12 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertGreater(phases["expand"], 0.0)
         self.assertGreater(phases["backup"], 0.0)
 
-    def test_batch_executor_records_batch_performance(self) -> None:
-        selector = MctsBatchSearchExecutor(config=MctsConfig(simulation_count=4, evaluation_batch_size=8))
+    def test_multi_position_executor_records_search_performance(self) -> None:
+        selector = MultiPositionMctsSearchExecutor(config=MctsConfig(simulation_count=4, nn_leaf_eval_batch_limit=8))
 
         selector.select_moves([UsiPosition(), UsiPosition()])
 
-        performance = selector.last_batch_performance
+        performance = selector.last_multi_position_search_performance
         self.assertIsNotNone(performance)
         assert performance is not None
         self.assertEqual(performance.position_count, 2)
@@ -231,14 +231,14 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertTrue(performance.actual_nn_leaf_eval_batch_size_histogram)
         self.assertGreater(performance.actual_nn_leaf_eval_batch_size_fill_ratio_avg, 0.0)
 
-    def test_batch_executor_supports_cshogi_backend(self) -> None:
-        selector = MctsBatchSearchExecutor(config=MctsConfig(simulation_count=4, evaluation_batch_size=8, board_backend="cshogi"))
+    def test_multi_position_executor_supports_cshogi_backend(self) -> None:
+        selector = MultiPositionMctsSearchExecutor(config=MctsConfig(simulation_count=4, nn_leaf_eval_batch_limit=8, board_backend="cshogi"))
 
         results = selector.select_moves([UsiPosition(), UsiPosition(command="position startpos moves 7g7f 3c3d")])
 
         self.assertEqual(len(results), 2)
         self.assertTrue(all(result.move != "resign" for result in results))
-        self.assertIsNotNone(selector.last_batch_performance)
+        self.assertIsNotNone(selector.last_multi_position_search_performance)
 
     def test_move_time_limit_can_stop_before_simulation_limit(self) -> None:
         policy = MctsMoveSelector(config=MctsConfig(simulation_count=8, move_time_limit_sec=0.0))
@@ -286,7 +286,7 @@ class MctsMoveSelectorTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             MctsConfig(c_puct=0.0)
         with self.assertRaises(ValueError):
-            MctsConfig(evaluation_batch_size=0)
+            MctsConfig(nn_leaf_eval_batch_limit=0)
         with self.assertRaises(ValueError):
             MctsConfig(move_time_limit_sec=-1.0)
 

@@ -15,7 +15,7 @@ class MainTest(unittest.TestCase):
         self.assertIsNone(args.checkpoint)
         self.assertEqual(args.move_selector, "direct")
         self.assertEqual(args.mcts_simulations, 16)
-        self.assertEqual(args.mcts_evaluation_batch_size, 1)
+        self.assertEqual(args.mcts_nn_leaf_eval_batch_limit, 1)
         self.assertIsNone(args.mcts_move_time_limit_sec)
         self.assertFalse(args.mcts_root_reuse)
         self.assertEqual(args.board_backend, "python-shogi")
@@ -36,7 +36,7 @@ class MainTest(unittest.TestCase):
                 "mcts",
                 "--mcts-simulations",
                 "32",
-                "--mcts-evaluation-batch-size",
+                "--mcts-nn-leaf-eval-batch-limit",
                 "8",
                 "--mcts-move-time-limit-sec",
                 "9.0",
@@ -54,7 +54,7 @@ class MainTest(unittest.TestCase):
 
         self.assertIsInstance(engine.policy, MctsMoveSelector)
         self.assertEqual(engine.policy.config.simulation_count, 32)
-        self.assertEqual(engine.policy.config.evaluation_batch_size, 8)
+        self.assertEqual(engine.policy.config.nn_leaf_eval_batch_limit, 8)
         self.assertEqual(engine.policy.config.move_time_limit_sec, 9.0)
         self.assertTrue(engine.policy.config.root_reuse)
         self.assertEqual(engine.policy.config.board_backend, "cshogi")

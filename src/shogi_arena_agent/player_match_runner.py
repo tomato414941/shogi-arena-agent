@@ -192,7 +192,7 @@ def _player_command_args(spec: PlayerSpec, prefix: str) -> list[str]:
                 "move_selection_profile": spec.move_selection_profile,
                 "move_selector": spec.move_selector,
                 "mcts_simulations": spec.mcts_simulations,
-                "mcts_evaluation_batch_size": spec.mcts_evaluation_batch_size,
+                "mcts_nn_leaf_eval_batch_limit": spec.mcts_nn_leaf_eval_batch_limit,
                 "mcts_move_time_limit_sec": spec.mcts_move_time_limit_sec,
                 "mcts_root_reuse": spec.mcts_root_reuse,
                 "device": spec.device,

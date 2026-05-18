@@ -11,11 +11,11 @@ uv run --extra model python scripts/generate_shogi_games.py
 
 ## Parallelism
 
-Self-play generation has two separate parallelism settings:
+Generated-game runs have two separate parallelism settings:
 
 | Setting | Meaning |
 | --- | --- |
-| `--concurrent-games-per-process` | Number of games advanced together inside one Python generator process. |
+| `--concurrent-games-per-process` | Number of games advanced together inside one Python generator process for multi-position NN leaf batching. |
 | `--generation-worker-processes` | Number of Python generator processes launched by the parent generator. |
 
 The approximate active-game count is:
@@ -24,9 +24,12 @@ The approximate active-game count is:
 concurrent_games_per_process * generation_worker_processes
 ```
 
-Use `--concurrent-games-per-process` to batch neural-network leaf evaluation
-within one process. Use `--generation-worker-processes` when one generator
-process is near one CPU core and the machine has additional CPU cores available.
+Use `--concurrent-games-per-process` to collect leaf evaluations from multiple
+active games before one neural-network forward pass. This is multi-position NN
+leaf batching, not in-tree leaf selection parallelism inside one search tree.
+
+Use `--generation-worker-processes` when one generator process is near one CPU
+core and the machine has additional CPU cores available.
 
 Each worker process writes a shard JSONL file. The parent process merges those
 shards into the requested `--out` JSONL and prints an aggregate summary.
@@ -40,14 +43,14 @@ uv run --extra model python scripts/generate_shogi_games.py \
   --black-move-selector mcts \
   --black-move-selection-profile visit-sampling \
   --black-mcts-simulations 16 \
-  --black-mcts-evaluation-batch-size 32 \
+  --black-mcts-nn-leaf-eval-batch-limit 32 \
   --black-device cuda \
   --white-kind checkpoint \
   --white-checkpoint /path/to/checkpoint.pt \
   --white-move-selector mcts \
   --white-move-selection-profile visit-sampling \
   --white-mcts-simulations 16 \
-  --white-mcts-evaluation-batch-size 32 \
+  --white-mcts-nn-leaf-eval-batch-limit 32 \
   --white-device cuda \
   --games 32 \
   --concurrent-games-per-process 8 \
