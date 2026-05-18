@@ -369,6 +369,63 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
         self.assertIn("progress ", stderr.getvalue())
 
+    def test_parallel_checkpoint_mcts_writes_durable_progress_artifacts(self) -> None:
+        module = _load_script_module()
+
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, *_args: object, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_batch(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with (
+                patch.object(module, "ShogiMoveChoiceCheckpointEvaluator", FakeEvaluator),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                module.main(
+                    [
+                        "--black-kind",
+                        "checkpoint",
+                        "--black-checkpoint",
+                        "black.pt",
+                        "--black-mcts-simulations",
+                        "1",
+                        "--white-kind",
+                        "checkpoint",
+                        "--white-checkpoint",
+                        "white.pt",
+                        "--white-mcts-simulations",
+                        "1",
+                        "--games",
+                        "2",
+                        "--concurrent-games-per-process",
+                        "2",
+                        "--progress-every-plies",
+                        "1",
+                        "--max-plies",
+                        "1",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            events_path = output_path.with_name("games.events.jsonl")
+            progress_path = output_path.with_name("games.progress.json")
+            records = load_shogi_game_records_jsonl(output_path)
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+            progress = json.loads(progress_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(len(records), 2)
+        self.assertTrue(any(event["event"] == "progress" for event in events))
+        self.assertEqual(sum(1 for event in events if event["event"] == "game_finished"), 2)
+        self.assertEqual(progress["completed_games"], 2)
+
     def test_parallel_checkpoint_mcts_accepts_cshogi_backend(self) -> None:
         module = _load_script_module()
 
@@ -476,11 +533,15 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
 
             records = load_shogi_game_records_jsonl(output_path)
             summary = json.loads(stdout.getvalue())
+            shard_events_exists = output_path.with_name("games.shard-000.events.jsonl").exists()
+            shard_progress_exists = output_path.with_name("games.shard-000.progress.json").exists()
 
         self.assertEqual(len(records), 3)
         self.assertEqual(summary["game_count"], 3)
         self.assertEqual(summary["generation_worker_processes"], 2)
         self.assertEqual(len(summary["shards"]), 2)
+        self.assertTrue(shard_events_exists)
+        self.assertTrue(shard_progress_exists)
 
     def test_usi_fixed_side_writes_game_records(self) -> None:
         module = _load_script_module()

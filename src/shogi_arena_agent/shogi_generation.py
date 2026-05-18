@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict, dataclass
 from statistics import mean
@@ -34,6 +34,9 @@ from shogi_arena_agent.shogi_game import (
 )
 from shogi_arena_agent.usi import UsiPosition
 
+GenerationProgressCallback = Callable[[dict[str, Any]], None]
+ShogiGameRecordCallback = Callable[[ShogiGameRecord], None]
+
 
 @dataclass(frozen=True)
 class ShogiGenerationConfig:
@@ -50,9 +53,16 @@ def generate_shogi_games(
     config: ShogiGenerationConfig,
     *,
     checkpoint_evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator] = ShogiMoveChoiceCheckpointEvaluator,
+    record_callback: ShogiGameRecordCallback | None = None,
+    progress_callback: GenerationProgressCallback | None = None,
 ) -> tuple[ShogiGameRecord, ...]:
     if config.concurrent_games_per_process > 1:
-        return _play_batched_checkpoint_mcts_games(config, checkpoint_evaluator_cls=checkpoint_evaluator_cls)
+        return _play_batched_checkpoint_mcts_games(
+            config,
+            checkpoint_evaluator_cls=checkpoint_evaluator_cls,
+            record_callback=record_callback,
+            progress_callback=progress_callback,
+        )
     records: list[ShogiGameRecord] = []
     black_static = build_static_player(config.black, name="black")
     white_static = build_static_player(config.white, name="white")
@@ -60,16 +70,17 @@ def generate_shogi_games(
         black = stack.enter_context(_player_context(config.black, name="black", static_player=black_static))
         white = stack.enter_context(_player_context(config.white, name="white", static_player=white_static))
         for _game_index in range(config.games):
-            records.append(
-                play_shogi_game(
-                    black=black.player,
-                    white=white.player,
-                    black_actor=black.actor,
-                    white_actor=white.actor,
-                    max_plies=config.max_plies,
-                    board_backend=config.board_backend,
-                )
+            record = play_shogi_game(
+                black=black.player,
+                white=white.player,
+                black_actor=black.actor,
+                white_actor=white.actor,
+                max_plies=config.max_plies,
+                board_backend=config.board_backend,
             )
+            records.append(record)
+            if record_callback is not None:
+                record_callback(record)
     return tuple(records)
 
 
@@ -110,6 +121,8 @@ def _play_batched_checkpoint_mcts_games(
     config: ShogiGenerationConfig,
     *,
     checkpoint_evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator],
+    record_callback: ShogiGameRecordCallback | None,
+    progress_callback: GenerationProgressCallback | None,
 ) -> tuple[ShogiGameRecord, ...]:
     _validate_batched_checkpoint_mcts_config(config)
     black_actor = _checkpoint_actor(
@@ -159,9 +172,20 @@ def _play_batched_checkpoint_mcts_games(
                     )
                     if game_index in remaining and games[game_index].apply_move(result.move, telemetry):
                         remaining.remove(game_index)
+                        if record_callback is not None:
+                            record_callback(games[game_index].to_record())
         if config.progress_every_plies and (ply + 1) % config.progress_every_plies == 0:
-            _print_progress(games, remaining=remaining, ply=ply + 1, elapsed_sec=perf_counter() - started_at)
-    return tuple(game.to_record() for game in games)
+            _emit_progress(
+                _progress_payload(games, remaining=remaining, ply=ply + 1, elapsed_sec=perf_counter() - started_at),
+                progress_callback=progress_callback,
+            )
+    records = tuple(game.to_record() for game in games)
+    if record_callback is not None:
+        completed_indexes = set(range(config.games)) - remaining
+        for index, record in enumerate(records):
+            if index not in completed_indexes:
+                record_callback(record)
+    return records
 
 
 def _player_context(
@@ -345,16 +369,16 @@ def _performance_payload(performance: object | None) -> dict[str, object] | None
     return asdict(performance)
 
 
-def _print_progress(
+def _progress_payload(
     games: list[_ActiveBatchedGame],
     *,
     remaining: set[int],
     ply: int,
     elapsed_sec: float,
-) -> None:
+) -> dict[str, object]:
     completed = len(games) - len(remaining)
     active_plies = [len(games[index].transitions) for index in remaining]
-    payload = {
+    return {
         "ply": ply,
         "elapsed_sec": elapsed_sec,
         "completed_games": completed,
@@ -362,6 +386,12 @@ def _print_progress(
         "active_plies_avg": mean(active_plies) if active_plies else 0.0,
         "active_plies_max": max(active_plies) if active_plies else 0,
     }
+
+
+def _emit_progress(payload: dict[str, object], *, progress_callback: GenerationProgressCallback | None) -> None:
+    if progress_callback is not None:
+        progress_callback(payload)
+        return
     print("progress " + json.dumps(payload, sort_keys=True), file=sys.stderr, flush=True)
 
 
