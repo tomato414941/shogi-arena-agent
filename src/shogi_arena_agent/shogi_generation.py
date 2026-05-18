@@ -155,6 +155,7 @@ def _play_batched_checkpoint_mcts_games(
                     telemetry = ShogiDecisionTelemetry(
                         move_performance=_performance_payload(result.performance),
                         batch_performance=batch_performance,
+                        search_evidence=result.search_evidence,
                     )
                     if game_index in remaining and games[game_index].apply_move(result.move, telemetry):
                         remaining.remove(game_index)

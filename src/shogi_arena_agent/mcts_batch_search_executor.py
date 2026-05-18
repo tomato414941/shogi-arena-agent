@@ -19,6 +19,7 @@ from shogi_arena_agent.mcts_tree import (
     SelectedSimulation,
     expanded_children,
     position_ply,
+    root_child_visit_counts,
     select_final_move_at_ply,
     select_puct_child,
     visit_count_policy_targets,
@@ -30,6 +31,7 @@ from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 class MctsMoveResult:
     move: str
     policy_targets: dict[str, float] | None
+    search_evidence: dict[str, object] | None
     performance: MctsMovePerformance
 
 
@@ -261,6 +263,7 @@ class _BatchedSearchState:
             return MctsMoveResult(
                 move=RESIGN_MOVE,
                 policy_targets=None,
+                search_evidence=None,
                 performance=_batched_performance_since(
                     self.started_at,
                     model_call_count=self.model_call_count,
@@ -274,6 +277,9 @@ class _BatchedSearchState:
         return MctsMoveResult(
             move=select_final_move_at_ply(self.root, self.ply, self.move_selection, self.rng),
             policy_targets=visit_count_policy_targets(self.root),
+            search_evidence={
+                "mcts_root_child_visit_counts": root_child_visit_counts(self.root),
+            },
             performance=_batched_performance_since(
                 self.started_at,
                 model_call_count=self.model_call_count,

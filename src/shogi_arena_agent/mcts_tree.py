@@ -97,6 +97,10 @@ def visit_count_policy_targets(root: MctsNode) -> dict[str, float]:
     return {move: child.visit_count / total for move, child in root.children.items()}
 
 
+def root_child_visit_counts(root: MctsNode) -> dict[str, int]:
+    return {move: child.visit_count for move, child in root.children.items()}
+
+
 def select_puct_child(node: MctsNode, *, c_puct: float) -> tuple[str, MctsNode] | None:
     parent_sqrt = math.sqrt(max(1, node.visit_count))
     best: tuple[str, MctsNode] | None = None

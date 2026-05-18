@@ -13,6 +13,7 @@ from shogi_arena_agent.mcts_tree import (
     SelectedSimulation,
     expanded_children,
     position_moves,
+    root_child_visit_counts,
     select_final_move,
     select_puct_child,
     visit_count_policy_targets,
@@ -33,6 +34,7 @@ class MctsSearchSession:
         self.move_selection = move_selection
         self._rng = random.Random(self.move_selection.seed)
         self.last_policy_targets: dict[str, float] | None = None
+        self.last_search_evidence: dict[str, object] | None = None
         self.last_performance: MctsMovePerformance | None = None
         self._model_call_count = 0
         self._model_wall_time_sec = 0.0
@@ -51,6 +53,7 @@ class MctsSearchSession:
         if not legal_moves:
             self._discard_root()
             self.last_policy_targets = None
+            self.last_search_evidence = None
             self.last_performance = self._performance_since(started_at, output_count=0)
             return RESIGN_MOVE
 
@@ -71,6 +74,9 @@ class MctsSearchSession:
             )
 
         self.last_policy_targets = visit_count_policy_targets(root)
+        self.last_search_evidence = {
+            "mcts_root_child_visit_counts": root_child_visit_counts(root),
+        }
         self.last_performance = self._performance_since(started_at, output_count=completed_simulations)
         selected_move = select_final_move(root, position, self.move_selection, self._rng)
         self._store_root(root, position_moves_tuple)
@@ -206,6 +212,7 @@ class MctsMoveSelector:
         self.move_selection = move_selection or visit_sampling_move_selection_config()
         self._default_session = self.new_session()
         self.last_policy_targets: dict[str, float] | None = None
+        self.last_search_evidence: dict[str, object] | None = None
         self.last_performance: MctsMovePerformance | None = None
 
     def new_session(self) -> MctsSearchSession:
@@ -218,5 +225,6 @@ class MctsMoveSelector:
     def select_move(self, position: UsiPosition) -> str:
         move = self._default_session.select_move(position)
         self.last_policy_targets = self._default_session.last_policy_targets
+        self.last_search_evidence = self._default_session.last_search_evidence
         self.last_performance = self._default_session.last_performance
         return move

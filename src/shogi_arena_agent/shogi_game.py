@@ -22,6 +22,7 @@ class ShogiActorSpec:
 class ShogiDecisionTelemetry:
     move_performance: dict[str, object] | None = None
     batch_performance: dict[str, object] | None = None
+    search_evidence: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -217,9 +218,15 @@ def _as_player(player: ShogiPlayer | UsiEngine) -> ShogiPlayer:
 
 def _policy_decision_telemetry(policy: object) -> ShogiDecisionTelemetry | None:
     performance = getattr(policy, "last_performance", None)
+    search_evidence = getattr(policy, "last_search_evidence", None)
     if performance is None or not is_dataclass(performance):
+        if isinstance(search_evidence, dict):
+            return ShogiDecisionTelemetry(search_evidence=search_evidence)
         return None
-    return ShogiDecisionTelemetry(move_performance=_dataclass_payload(performance))
+    return ShogiDecisionTelemetry(
+        move_performance=_dataclass_payload(performance),
+        search_evidence=search_evidence if isinstance(search_evidence, dict) else None,
+    )
 
 
 def _default_actor_spec(player: ShogiPlayer | UsiEngine, *, side: str) -> ShogiActorSpec:
@@ -312,6 +319,8 @@ def _decision_telemetry_to_json(telemetry: ShogiDecisionTelemetry) -> dict[str, 
         payload["move_performance"] = telemetry.move_performance
     if telemetry.batch_performance is not None:
         payload["batch_performance"] = telemetry.batch_performance
+    if telemetry.search_evidence is not None:
+        payload["search_evidence"] = telemetry.search_evidence
     return payload
 
 
@@ -322,6 +331,7 @@ def _decision_telemetry_from_json(value: object) -> ShogiDecisionTelemetry | Non
     return ShogiDecisionTelemetry(
         move_performance=_optional_object_dict(data.get("move_performance")),
         batch_performance=_optional_object_dict(data.get("batch_performance")),
+        search_evidence=_optional_object_dict(data.get("search_evidence")),
     )
 
 

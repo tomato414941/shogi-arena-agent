@@ -277,6 +277,12 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         assert records[0].transitions[0].decision_telemetry is not None
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry.move_performance)
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry.batch_performance)
+        self.assertIsNotNone(records[0].transitions[0].decision_telemetry.search_evidence)
+        assert records[0].transitions[0].decision_telemetry.search_evidence is not None
+        self.assertIn(
+            "mcts_root_child_visit_counts",
+            records[0].transitions[0].decision_telemetry.search_evidence,
+        )
         self.assertIn("generation_wall_time_sec", summary)
         self.assertIn("inference_performance", summary)
         self.assertIn("batch_performance", summary)
