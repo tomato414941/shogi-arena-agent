@@ -60,9 +60,20 @@ class ShogiMoveChoiceCheckpointEvaluator:
     @classmethod
     def from_checkpoint(cls, checkpoint_path: str | Path, *, device: str = "cpu") -> ShogiMoveChoiceCheckpointEvaluator:
         try:
+            import shogi
             import torch
-            from intrep.problems.shogi_policy_value.checkpoint import load_shogi_policy_value_checkpoint
+            from intrep.problems.shogi_policy_value.checkpoint import (
+                load_shogi_policy_value_checkpoint,
+                load_shogi_policy_value_checkpoint_training_config,
+            )
+            from intrep.problems.shogi_policy_value.model import (
+                SHOGI_POLICY_VALUE_MODEL_POLICY_PLANE_SHARED_TRANSFORMER,
+            )
             from intrep.worlds.shogi.move_encoding import shogi_candidate_move_features
+            from intrep.worlds.shogi.policy_plane import (
+                shogi_policy_plane_action_index,
+                shogi_policy_plane_legal_mask,
+            )
             from intrep.worlds.shogi.position_encoding import shogi_position_token_ids_from_sfen
         except ImportError as error:
             raise RuntimeError(
@@ -70,11 +81,13 @@ class ShogiMoveChoiceCheckpointEvaluator:
             ) from error
 
         model = load_shogi_policy_value_checkpoint(checkpoint_path, device=device)
+        config = load_shogi_policy_value_checkpoint_training_config(checkpoint_path, device=device)
         torch_device = torch.device(device)
 
-        def evaluate_batch(requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+        def evaluate_candidate_batch(requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
             if not requests:
                 return []
+            boards = [shogi.Board(position_sfen) for position_sfen, _legal_moves in requests]
             max_choice_count = max(len(legal_moves) for _position_sfen, legal_moves in requests)
             position_token_ids = torch.stack(
                 [shogi_position_token_ids_from_sfen(position_sfen) for position_sfen, _legal_moves in requests]
@@ -83,9 +96,10 @@ class ShogiMoveChoiceCheckpointEvaluator:
                 [
                     shogi_candidate_move_features(
                         legal_moves,
+                        turn=board.turn,
                         max_choice_count=max_choice_count,
                     )
-                    for _position_sfen, legal_moves in requests
+                    for board, (_position_sfen, legal_moves) in zip(boards, requests, strict=True)
                 ]
             ).to(torch_device)
             candidate_mask = torch.zeros((len(requests), max_choice_count), dtype=torch.bool, device=torch_device)
@@ -108,7 +122,39 @@ class ShogiMoveChoiceCheckpointEvaluator:
                 evaluations.append((prior, value))
             return evaluations
 
-        return cls(evaluate_batch)
+        def evaluate_policy_plane_batch(requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+            if not requests:
+                return []
+            boards = [shogi.Board(position_sfen) for position_sfen, _legal_moves in requests]
+            position_token_ids = torch.stack(
+                [shogi_position_token_ids_from_sfen(position_sfen) for position_sfen, _legal_moves in requests]
+            ).to(torch_device)
+            legal_action_mask = torch.stack([shogi_policy_plane_legal_mask(board) for board in boards]).to(torch_device)
+
+            with torch.no_grad():
+                if hasattr(model, "forward_policy_value"):
+                    logits, values = model.forward_policy_value(position_token_ids, legal_action_mask)
+                else:
+                    logits = model(position_token_ids, legal_action_mask)
+                    values = model.predict_value(position_token_ids) if hasattr(model, "predict_value") else None
+
+            evaluations: list[PositionEvaluation] = []
+            for index, (board, (_position_sfen, legal_moves)) in enumerate(zip(boards, requests, strict=True)):
+                action_indices = torch.tensor(
+                    [shogi_policy_plane_action_index(move, turn=board.turn) for move in legal_moves],
+                    dtype=torch.long,
+                    device=torch_device,
+                )
+                move_logits = logits[index].index_select(0, action_indices)
+                probabilities = torch.softmax(move_logits, dim=0).detach().cpu().tolist()
+                prior = {move: float(probabilities[move_index]) for move_index, move in enumerate(legal_moves)}
+                value = 0.0 if values is None else float(values[index].detach().cpu().item())
+                evaluations.append((prior, value))
+            return evaluations
+
+        if config.model == SHOGI_POLICY_VALUE_MODEL_POLICY_PLANE_SHARED_TRANSFORMER:
+            return cls(evaluate_policy_plane_batch)
+        return cls(evaluate_candidate_batch)
 
     def __init__(
         self,
