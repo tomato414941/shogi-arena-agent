@@ -86,13 +86,20 @@ def generate_shogi_games(
 
 def records_summary(records: tuple[ShogiGameRecord, ...], *, wall_time_sec: float | None = None) -> dict[str, Any]:
     end_reasons = Counter(record.end_reason for record in records)
+    game_count = len(records)
+    max_plies_draw_count = end_reasons.get("max_plies", 0)
+    game_over_count = end_reasons.get("game_over", 0)
     summary: dict[str, Any] = {
-        "game_count": len(records),
+        "game_count": game_count,
         "end_reasons": dict(end_reasons),
-        "average_plies": sum(len(record.transitions) for record in records) / len(records) if records else 0.0,
+        "average_plies": sum(len(record.transitions) for record in records) / game_count if game_count else 0.0,
         "black_wins": sum(1 for record in records if record.winner == "black"),
         "white_wins": sum(1 for record in records if record.winner == "white"),
         "draws": sum(1 for record in records if record.winner is None),
+        "max_plies_draw_count": max_plies_draw_count,
+        "max_plies_draw_rate": max_plies_draw_count / game_count if game_count else 0.0,
+        "game_over_count": game_over_count,
+        "game_over_rate": game_over_count / game_count if game_count else 0.0,
     }
     if wall_time_sec is not None:
         summary["generation_wall_time_sec"] = wall_time_sec

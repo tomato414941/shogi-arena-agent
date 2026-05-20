@@ -210,6 +210,8 @@ def _aggregate_shard_summaries(
     for summary in summaries:
         for reason, count in dict(summary.get("end_reasons", {})).items():
             end_reasons[str(reason)] = end_reasons.get(str(reason), 0) + int(count)
+    max_plies_draw_count = end_reasons.get("max_plies", 0)
+    game_over_count = end_reasons.get("game_over", 0)
     aggregate = {
         "game_count": total_games,
         "end_reasons": end_reasons,
@@ -217,6 +219,10 @@ def _aggregate_shard_summaries(
         "black_wins": sum(int(summary.get("black_wins", 0)) for summary in summaries),
         "white_wins": sum(int(summary.get("white_wins", 0)) for summary in summaries),
         "draws": sum(int(summary.get("draws", 0)) for summary in summaries),
+        "max_plies_draw_count": max_plies_draw_count,
+        "max_plies_draw_rate": max_plies_draw_count / total_games if total_games else 0.0,
+        "game_over_count": game_over_count,
+        "game_over_rate": game_over_count / total_games if total_games else 0.0,
         "generation_wall_time_sec": wall_time_sec,
         "plies_per_sec": total_plies / wall_time_sec if wall_time_sec > 0.0 else 0.0,
         "generation_worker_processes": args.generation_worker_processes,

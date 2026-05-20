@@ -73,6 +73,10 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertFalse(records[0].black_actor.settings["root_reuse"])
         self.assertFalse(records[0].white_actor.settings["root_reuse"])
         self.assertEqual(summary["game_count"], 1)
+        self.assertEqual(summary["max_plies_draw_count"], 1)
+        self.assertEqual(summary["max_plies_draw_rate"], 1.0)
+        self.assertEqual(summary["game_over_count"], 0)
+        self.assertEqual(summary["game_over_rate"], 0.0)
 
     def test_records_checkpoint_mcts_settings_for_both_sides(self) -> None:
         module = _load_script_module()
