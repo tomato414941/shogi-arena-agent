@@ -72,7 +72,7 @@ def add_player_arguments(parser: argparse.ArgumentParser, prefix: str) -> None:
     parser.add_argument(f"--{prefix}-kind", choices=PLAYER_KINDS, required=True)
     parser.add_argument(f"--{prefix}-checkpoint")
     parser.add_argument(f"--{prefix}-checkpoint-id")
-    parser.add_argument(f"--{prefix}-move-selection-profile", choices=MOVE_SELECTION_PROFILES, default="visit-sampling")
+    parser.add_argument(f"--{prefix}-move-selection-profile", choices=MOVE_SELECTION_PROFILES)
     parser.add_argument(f"--{prefix}-move-selection-temperature", type=float)
     parser.add_argument(f"--{prefix}-move-selection-temperature-plies", type=int)
     parser.add_argument(f"--{prefix}-move-selector", choices=("direct", "mcts"), default="mcts")
@@ -98,17 +98,31 @@ def validate_player_arguments(parser: argparse.ArgumentParser, args: argparse.Na
         parser.error(f"--{prefix}-usi-command is required when --{prefix}-kind usi_engine")
 
 
-def player_spec_from_args(args: argparse.Namespace, prefix: str, *, seed: int | None = None) -> PlayerSpec:
+def player_spec_from_args(
+    args: argparse.Namespace,
+    prefix: str,
+    *,
+    default_move_selection_profile: str,
+    default_move_selection_temperature: float,
+    default_move_selection_temperature_plies: int,
+    seed: int | None = None,
+) -> PlayerSpec:
     kind = _arg(args, prefix, "kind")
     if kind == "checkpoint":
         checkpoint = _arg(args, prefix, "checkpoint")
         if checkpoint is None:
             raise ValueError(f"{prefix} checkpoint player requires a checkpoint")
-        move_selection_profile = _arg(args, prefix, "move_selection_profile")
+        move_selection_profile = _arg(args, prefix, "move_selection_profile") or default_move_selection_profile
         move_selection_temperature = _arg(args, prefix, "move_selection_temperature")
         move_selection_temperature_plies = _arg(args, prefix, "move_selection_temperature_plies")
-        move_selection_temperature = 1.0 if move_selection_temperature is None else move_selection_temperature
-        move_selection_temperature_plies = 40 if move_selection_temperature_plies is None else move_selection_temperature_plies
+        move_selection_temperature = (
+            default_move_selection_temperature if move_selection_temperature is None else move_selection_temperature
+        )
+        move_selection_temperature_plies = (
+            default_move_selection_temperature_plies
+            if move_selection_temperature_plies is None
+            else move_selection_temperature_plies
+        )
         return CheckpointPolicyPlayerSpec(
             checkpoint=checkpoint,
             checkpoint_id=_arg(args, prefix, "checkpoint_id"),

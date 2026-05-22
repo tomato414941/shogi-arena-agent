@@ -19,6 +19,9 @@ from shogi_arena_agent.usi import BOARD_BACKENDS
 
 STANDARD_MAX_PLIES = 320
 DEFAULT_MAX_PLIES = 320
+GENERATION_MOVE_SELECTION_PROFILE = "visit-sampling"
+GENERATION_MOVE_SELECTION_TEMPERATURE = 1.0
+GENERATION_MOVE_SELECTION_TEMPERATURE_PLIES = 40
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -77,7 +80,14 @@ def _generation_config_from_args(args: argparse.Namespace) -> ShogiGenerationCon
 
 
 def _player_config_from_args(args: argparse.Namespace, prefix: str) -> PlayerSpec:
-    return player_spec_from_args(args, prefix, seed=args.seed)
+    return player_spec_from_args(
+        args,
+        prefix,
+        default_move_selection_profile=GENERATION_MOVE_SELECTION_PROFILE,
+        default_move_selection_temperature=GENERATION_MOVE_SELECTION_TEMPERATURE,
+        default_move_selection_temperature_plies=GENERATION_MOVE_SELECTION_TEMPERATURE_PLIES,
+        seed=args.seed,
+    )
 
 
 def _warn_short_max_plies(max_plies: int) -> None:

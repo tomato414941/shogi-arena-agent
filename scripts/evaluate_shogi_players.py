@@ -23,6 +23,9 @@ from shogi_arena_agent.shogi_game import (
 
 STANDARD_MAX_PLIES = 320
 DEFAULT_MAX_PLIES = 320
+EVALUATION_MOVE_SELECTION_PROFILE = "visit-sampling"
+EVALUATION_MOVE_SELECTION_TEMPERATURE = 1.0
+EVALUATION_MOVE_SELECTION_TEMPERATURE_PLIES = 0
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -81,7 +84,13 @@ def _match_config_from_args(args: argparse.Namespace) -> PlayerMatchRunConfig:
 
 
 def _player_config_from_args(args: argparse.Namespace, prefix: str) -> PlayerSpec:
-    return player_spec_from_args(args, prefix)
+    return player_spec_from_args(
+        args,
+        prefix,
+        default_move_selection_profile=EVALUATION_MOVE_SELECTION_PROFILE,
+        default_move_selection_temperature=EVALUATION_MOVE_SELECTION_TEMPERATURE,
+        default_move_selection_temperature_plies=EVALUATION_MOVE_SELECTION_TEMPERATURE_PLIES,
+    )
 
 
 def _evaluation_summary(evaluation: Any) -> dict[str, Any]:

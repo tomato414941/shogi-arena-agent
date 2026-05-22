@@ -254,6 +254,42 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
         self.assertEqual(first_payload["completed_games"], 1)
         self.assertEqual(first_payload["total_games"], 2)
 
+    def test_checkpoint_evaluation_defaults_to_deterministic_mcts_move_selection(self) -> None:
+        module = _load_script_module()
+        load_kwargs: list[dict[str, object]] = []
+
+        def fake_load_move_selector(_checkpoint: str, **kwargs: object):
+            load_kwargs.append(kwargs)
+            return UsiEngine().policy
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with patch(
+                "shogi_arena_agent.player_cli._load_move_selector",
+                side_effect=fake_load_move_selector,
+            ), contextlib.redirect_stdout(io.StringIO()):
+                module.main(
+                    [
+                        "--player-a-kind",
+                        "checkpoint",
+                        "--player-a-checkpoint",
+                        "model.pt",
+                        "--player-b-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "1",
+                        "--max-plies",
+                        "1",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+        self.assertEqual(load_kwargs[0]["profile"], "visit-sampling")
+        self.assertEqual(load_kwargs[0]["temperature"], 1.0)
+        self.assertEqual(load_kwargs[0]["temperature_plies"], 0)
+
 
 def _load_script_module() -> ModuleType:
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "evaluate_shogi_players.py"
