@@ -205,6 +205,7 @@ RunPod checkpoint-vs-YaneuraOu evaluation has a repository entrypoint:
 
 ```sh
 CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
+YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-material-avx2 \
 MCTS_SIMULATIONS=4096 \
 MCTS_BATCH_SIZE=64 \
 MCTS_MOVE_TIME_LIMIT_SEC=9.0 \
@@ -213,28 +214,12 @@ MAX_PLIES=320 \
 ./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
 ```
 
-For a NNUE-backed YaneuraOu check, provide the YaneuraOu edition and evaluation
-archive at run time instead of committing the eval file:
+For a NNUE-backed YaneuraOu check, use the matching R2 engine artifact:
 
 ```sh
 CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
-YANEURAOU_EDITION=YANEURAOU_ENGINE_NNUE \
-YANEURAOU_EVAL_ARCHIVE_URL=https://github.com/yaneurao/YaneuraOu/releases/download/suisho5/Suisho5.7z \
+YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-suisho5-avx2 \
 YANEURAOU_FV_SCALE=24 \
-YANEURAOU_GO_COMMAND="go byoyomi 1000" \
-./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
-```
-
-Public tanuki releases can be checked by pointing the same entrypoint at the
-matching tanuki engine branch and eval archive:
-
-```sh
-CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
-YANEURAOU_REPOSITORY_URL=https://github.com/nodchip/tanuki-.git \
-YANEURAOU_REF=tanuki-dr4-engine \
-YANEURAOU_EDITION=YANEURAOU_ENGINE_NNUE_HALFKP_1024X2_8_32 \
-YANEURAOU_EVAL_ARCHIVE_URL=https://github.com/nodchip/tanuki-/releases/download/tanuki-dr4/tanuki-dr4-2023-12-03.zip \
-YANEURAOU_FV_SCALE=20 \
 YANEURAOU_GO_COMMAND="go byoyomi 1000" \
 ./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
 ```
