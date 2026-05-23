@@ -157,7 +157,8 @@ elif [[ -n '$YANEURAOU_ENGINE_ARTIFACT_URL' ]]; then
     exit 1
   fi
 fi
-if [[ -d \"\$ENGINE_ARTIFACT_DIR\" && -x \"\$ENGINE_ARTIFACT_DIR/bin/YaneuraOu-runpod\" ]]; then
+if [[ -d \"\$ENGINE_ARTIFACT_DIR\" && -f \"\$ENGINE_ARTIFACT_DIR/bin/YaneuraOu-runpod\" ]]; then
+  chmod +x \"\$ENGINE_ARTIFACT_DIR/bin/YaneuraOu-runpod\"
   YANEURAOU_COMMAND=\"\$ENGINE_ARTIFACT_DIR/bin/YaneuraOu-runpod\"
   if [[ -z \"\$REMOTE_YANEURAOU_EVAL_DIR\" && -d \"\$ENGINE_ARTIFACT_DIR/eval\" ]]; then
     REMOTE_YANEURAOU_EVAL_DIR=\"\$ENGINE_ARTIFACT_DIR/eval\"
