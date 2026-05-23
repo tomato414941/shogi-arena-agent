@@ -42,7 +42,7 @@ def summarize_sweep(run_dir: Path) -> dict[str, Any]:
             }
         )
     return {
-        "schema_version": "shogi_arena_agent.match_sweep_summary.v1",
+        "schema_version": "shogi_arena_agent.match_sweep_summary",
         "run_dir": str(run_dir),
         "cases": cases,
     }
