@@ -13,6 +13,9 @@ OUTPUT_DIR=${OUTPUT_DIR:-runs/shogi/runpod-checkpoint-vs-yaneuraou}
 RUN_ID=${RUN_ID:-$(basename "$OUTPUT_DIR")}
 
 GPU_TYPE=${GPU_TYPE:-NVIDIA RTX 4000 Ada Generation}
+RUNPOD_TEMPLATE_ID=${RUNPOD_TEMPLATE_ID:-runpod-torch-v280}
+RUNPOD_IMAGE=${RUNPOD_IMAGE:-}
+SHOGI_EVAL_RUNTIME=${SHOGI_EVAL_RUNTIME:-standard}
 DATA_CENTER_IDS=${DATA_CENTER_IDS:-}
 SECURE_CLOUD=${SECURE_CLOUD:-0}
 MCTS_SIMULATIONS=${MCTS_SIMULATIONS:-4096}
@@ -54,10 +57,36 @@ if [[ -n "$YANEURAOU_ENGINE_ARTIFACT_URL" && -n "$YANEURAOU_ENGINE_ARTIFACT_R2_P
   echo "set only one of YANEURAOU_ENGINE_ARTIFACT_URL or YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX" >&2
   exit 1
 fi
+if [[ "$SHOGI_EVAL_RUNTIME" != "standard" && "$SHOGI_EVAL_RUNTIME" != "prepared" ]]; then
+  echo "SHOGI_EVAL_RUNTIME must be standard or prepared" >&2
+  exit 1
+fi
 
 CLOUD_ARGS=()
 if [[ "$SECURE_CLOUD" == "1" ]]; then
   CLOUD_ARGS+=(--secure-cloud)
+fi
+RUNPOD_RUNTIME_ARGS=()
+if [[ -n "$RUNPOD_IMAGE" ]]; then
+  RUNPOD_RUNTIME_ARGS+=(--image "$RUNPOD_IMAGE")
+else
+  RUNPOD_RUNTIME_ARGS+=(--template-id "$RUNPOD_TEMPLATE_ID")
+fi
+if [[ "$SHOGI_EVAL_RUNTIME" == "prepared" ]]; then
+  SETUP_COMMAND='cd "$REMOTE_DIR"; python3 -m venv --system-site-packages .venv; .venv/bin/python -m pip install -e . --no-deps; .venv/bin/python - <<'"'"'PY'"'"'
+import cshogi
+import numpy
+import shogi
+import tokenizers
+import torch
+import zstandard
+
+if not torch.cuda.is_available():
+    raise SystemExit("CUDA is not available")
+print("prepared shogi evaluation runtime is usable")
+PY'
+else
+  SETUP_COMMAND='cd "$REMOTE_DIR"; bash scripts/setup_runpod.sh'
 fi
 
 CHECKPOINT_ABS=$(realpath "$CHECKPOINT")
@@ -85,9 +114,11 @@ SYNC_ARGS=(
   --sync uv.lock
   --sync README.md
   --sync AGENTS.md
-  --sync scripts/setup_runpod.sh
   --sync "$CHECKPOINT_REL"
 )
+if [[ "$SHOGI_EVAL_RUNTIME" == "standard" ]]; then
+  SYNC_ARGS+=(--sync scripts/setup_runpod.sh)
+fi
 R2_REMOTE_ENV=
 R2_REMOTE_ENV_LOCAL=
 cleanup() {
@@ -116,7 +147,7 @@ python3 "$RUNPOD_JOB" \
   --repo-root "$INTREP_ROOT" \
   --allow-existing-pods \
   --name shogi-arena-eval \
-  --template-id runpod-torch-v280 \
+  "${RUNPOD_RUNTIME_ARGS[@]}" \
   --gpu-type "$GPU_TYPE" \
   "${CLOUD_ARGS[@]}" \
   ${DATA_CENTER_IDS:+--data-center-ids "$DATA_CENTER_IDS"} \
@@ -124,15 +155,21 @@ python3 "$RUNPOD_JOB" \
   --volume-size 0 \
   --remote-dir /root/intrep \
   "${SYNC_ARGS[@]}" \
-  --setup-command 'cd "$REMOTE_DIR"; bash scripts/setup_runpod.sh' \
+  --setup-command "$SETUP_COMMAND" \
   --remote "set -euo pipefail
-apt-get update >/dev/null
-DEBIAN_FRONTEND=noninteractive apt-get install -y git build-essential curl unzip p7zip-full zstd >/dev/null
+if [[ '$SHOGI_EVAL_RUNTIME' == 'standard' ]]; then
+  apt-get update >/dev/null
+  DEBIAN_FRONTEND=noninteractive apt-get install -y git build-essential curl unzip p7zip-full zstd >/dev/null
+fi
 cd /root
 rm -rf shogi-arena-agent YaneuraOu
 GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch '$ARENA_REF' '$ARENA_REPOSITORY_URL' shogi-arena-agent
 cd /root/shogi-arena-agent
-/root/intrep/.venv/bin/python -m pip install -e .
+if [[ '$SHOGI_EVAL_RUNTIME' == 'prepared' ]]; then
+  /root/intrep/.venv/bin/python -m pip install -e . --no-deps
+else
+  /root/intrep/.venv/bin/python -m pip install -e .
+fi
 YANEURAOU_COMMAND=/root/YaneuraOu/source/YaneuraOu-runpod
 REMOTE_YANEURAOU_EVAL_DIR='$YANEURAOU_EVAL_DIR'
 ENGINE_ARTIFACT_DIR=/root/yaneuraou-engine-artifact
