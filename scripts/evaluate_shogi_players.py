@@ -26,6 +26,7 @@ DEFAULT_MAX_PLIES = 320
 EVALUATION_MOVE_SELECTION_PROFILE = "visit-sampling"
 EVALUATION_MOVE_SELECTION_TEMPERATURE = 1.0
 EVALUATION_MOVE_SELECTION_TEMPERATURE_PLIES = 0
+DEFAULT_PROGRESS_EVERY_GAMES = 1
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -35,7 +36,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", required=True, help="Path to write one ShogiGameRecord JSON object per line.")
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--match-worker-processes", type=int, default=1)
-    parser.add_argument("--progress-every-games", type=int, default=0)
+    parser.add_argument("--progress-every-games", type=int, default=DEFAULT_PROGRESS_EVERY_GAMES)
     parser.add_argument("--start-game-index", type=int, default=0, help=argparse.SUPPRESS)
     # Computer-shogi evaluation should not end as a short artificial draw; use
     # the WCSC-style 320-ply cap as the default and warn on shorter overrides.

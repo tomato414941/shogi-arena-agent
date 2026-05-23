@@ -254,6 +254,33 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
         self.assertEqual(first_payload["completed_games"], 1)
         self.assertEqual(first_payload["total_games"], 2)
 
+    def test_progress_every_games_defaults_to_each_game(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                module.main(
+                    [
+                        "--player-a-kind",
+                        "deterministic_legal",
+                        "--player-b-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "2",
+                        "--max-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+        progress_lines = [line for line in stderr.getvalue().splitlines() if line.startswith("progress ")]
+        self.assertEqual(len(progress_lines), 2)
+
     def test_checkpoint_evaluation_defaults_to_deterministic_mcts_move_selection(self) -> None:
         module = _load_script_module()
         load_kwargs: list[dict[str, object]] = []
