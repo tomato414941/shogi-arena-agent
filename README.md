@@ -204,24 +204,26 @@ Local smoke tests can use a material-evaluation YaneuraOu build.
 RunPod checkpoint-vs-YaneuraOu evaluation has a repository entrypoint:
 
 ```sh
-CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
-YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-material-avx2 \
-MCTS_SIMULATIONS=4096 \
-MCTS_BATCH_SIZE=64 \
-MCTS_MOVE_TIME_LIMIT_SEC=9.0 \
-GAMES=1 \
-MAX_PLIES=320 \
-./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
+./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh \
+  --checkpoint ../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
+  --opponent material-nodes1 \
+  --mcts-simulations 4096 \
+  --mcts-batch-size 64 \
+  --mcts-move-time-limit-sec 9.0 \
+  --games 1 \
+  --max-plies 320 \
+  --output-dir runs/shogi/material-n1-mcts4096-g1
 ```
 
 For a NNUE-backed YaneuraOu check, use the matching R2 engine artifact:
 
 ```sh
-CHECKPOINT=../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
-YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-suisho5-avx2 \
-YANEURAOU_FV_SCALE=24 \
-YANEURAOU_GO_COMMAND="go byoyomi 1000" \
-./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh
+./scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh \
+  --checkpoint ../intelligence-representation/models/d256-h1024-heads8-l6-shogi/checkpoint.pt \
+  --opponent suisho5-byoyomi1000 \
+  --mcts-simulations 4096 \
+  --games 1 \
+  --output-dir runs/shogi/suisho5-byoyomi1000-mcts4096-g1
 ```
 
 This script uses the shared `../runpod-job-runner/scripts/run_job.py` helper

@@ -8,32 +8,199 @@ INTREP_ROOT=${INTREP_ROOT:-"$ARENA_ROOT/../intelligence-representation"}
 RUNPOD_RUNNER_ROOT=${RUNPOD_RUNNER_ROOT:-"$ARENA_ROOT/../runpod-job-runner"}
 RUNPOD_JOB=${RUNPOD_JOB:-"$RUNPOD_RUNNER_ROOT/scripts/run_job.py"}
 
-CHECKPOINT=${CHECKPOINT:?set CHECKPOINT to an intelligence-representation checkpoint path}
-OUTPUT_DIR=${OUTPUT_DIR:-runs/shogi/runpod-checkpoint-vs-yaneuraou}
-RUN_ID=${RUN_ID:-$(basename "$OUTPUT_DIR")}
-
-GPU_TYPE=${GPU_TYPE:-NVIDIA RTX 4000 Ada Generation}
-RUNPOD_TEMPLATE_ID=${RUNPOD_TEMPLATE_ID:-runpod-torch-v280}
-DATA_CENTER_IDS=${DATA_CENTER_IDS:-}
-SECURE_CLOUD=${SECURE_CLOUD:-0}
-MCTS_SIMULATIONS=${MCTS_SIMULATIONS:-4096}
-MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE:-64}
-MCTS_MOVE_TIME_LIMIT_SEC=${MCTS_MOVE_TIME_LIMIT_SEC:-9.0}
-BOARD_BACKEND=${BOARD_BACKEND:-cshogi}
-GAMES=${GAMES:-1}
-MAX_PLIES=${MAX_PLIES:-320}
-PROGRESS_EVERY_GAMES=${PROGRESS_EVERY_GAMES:-1}
-YANEURAOU_GO_COMMAND=${YANEURAOU_GO_COMMAND:-go nodes 1}
-YANEURAOU_READ_TIMEOUT_SECONDS=${YANEURAOU_READ_TIMEOUT_SECONDS:-30}
-YANEURAOU_EVAL_DIR=${YANEURAOU_EVAL_DIR:-}
-YANEURAOU_THREADS=${YANEURAOU_THREADS:-}
-YANEURAOU_HASH_MB=${YANEURAOU_HASH_MB:-}
-YANEURAOU_FV_SCALE=${YANEURAOU_FV_SCALE:-}
-YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=${YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX:?set YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX to a restored engine artifact prefix}
 R2_ENV_FILE=${R2_ENV_FILE:-"$HOME/.secrets/intrep-cloudflare-r2"}
 
 ARENA_REPOSITORY_URL=${ARENA_REPOSITORY_URL:-$(git config --get remote.origin.url)}
 ARENA_REF=${ARENA_REF:-main}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/runpod_evaluate_checkpoint_vs_yaneuraou.sh \
+    --checkpoint PATH \
+    --opponent PRESET \
+    --mcts-simulations N \
+    --games N \
+    --output-dir PATH \
+    [options]
+
+Required run identity options:
+  --checkpoint PATH          Checkpoint directory or file under INTREP_ROOT.
+  --opponent PRESET          Opponent preset:
+                               material-nodes1
+                               material-nodes1000
+                               suisho5-nodes1
+                               suisho5-nodes1000
+                               suisho5-byoyomi1000
+  --mcts-simulations N       Checkpoint MCTS simulations per move.
+  --games N                  Number of games.
+  --output-dir PATH          Output directory under INTREP_ROOT.
+
+Options:
+  --mcts-batch-size N        NN leaf eval batch limit. Default: 64.
+  --mcts-move-time-limit-sec SEC
+                             Per-move time cap for checkpoint MCTS. Default: 9.0.
+  --max-plies N              Maximum plies per game. Default: 320.
+  --progress-every-games N   Progress print cadence. Default: 1.
+  --gpu-type NAME            RunPod GPU type. Default: NVIDIA RTX 4000 Ada Generation.
+  --template-id ID           RunPod template id. Default: runpod-torch-v280.
+  --data-center-ids IDS      Optional RunPod data center ids.
+  --secure-cloud             Use RunPod secure cloud.
+  --board-backend NAME       Checkpoint board backend. Default: cshogi.
+  --yaneuraou-read-timeout-seconds SEC
+                             USI read timeout. Default: 30.
+  --dry-run                  Print the RunPod job without creating a pod.
+  -h, --help                 Show this help.
+
+Environment reserved for local/runtime integration:
+  INTREP_ROOT, RUNPOD_RUNNER_ROOT, RUNPOD_JOB, R2_ENV_FILE,
+  RUNPOD_API_KEY_FILE, RUNPOD_SSH_KEY, RUNPOD_SSH_PUBLIC_KEY,
+  ARENA_REPOSITORY_URL, ARENA_REF.
+EOF
+}
+
+CHECKPOINT=
+OPPONENT=
+OUTPUT_DIR=
+GPU_TYPE="NVIDIA RTX 4000 Ada Generation"
+RUNPOD_TEMPLATE_ID=runpod-torch-v280
+DATA_CENTER_IDS=
+SECURE_CLOUD=0
+MCTS_SIMULATIONS=
+MCTS_BATCH_SIZE=64
+MCTS_MOVE_TIME_LIMIT_SEC=9.0
+BOARD_BACKEND=cshogi
+GAMES=
+MAX_PLIES=320
+PROGRESS_EVERY_GAMES=1
+YANEURAOU_READ_TIMEOUT_SECONDS=30
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --checkpoint)
+      CHECKPOINT=${2:?--checkpoint requires a value}
+      shift 2
+      ;;
+    --opponent)
+      OPPONENT=${2:?--opponent requires a value}
+      shift 2
+      ;;
+    --mcts-simulations)
+      MCTS_SIMULATIONS=${2:?--mcts-simulations requires a value}
+      shift 2
+      ;;
+    --mcts-batch-size)
+      MCTS_BATCH_SIZE=${2:?--mcts-batch-size requires a value}
+      shift 2
+      ;;
+    --mcts-move-time-limit-sec)
+      MCTS_MOVE_TIME_LIMIT_SEC=${2:?--mcts-move-time-limit-sec requires a value}
+      shift 2
+      ;;
+    --games)
+      GAMES=${2:?--games requires a value}
+      shift 2
+      ;;
+    --max-plies)
+      MAX_PLIES=${2:?--max-plies requires a value}
+      shift 2
+      ;;
+    --progress-every-games)
+      PROGRESS_EVERY_GAMES=${2:?--progress-every-games requires a value}
+      shift 2
+      ;;
+    --output-dir)
+      OUTPUT_DIR=${2:?--output-dir requires a value}
+      shift 2
+      ;;
+    --gpu-type)
+      GPU_TYPE=${2:?--gpu-type requires a value}
+      shift 2
+      ;;
+    --template-id)
+      RUNPOD_TEMPLATE_ID=${2:?--template-id requires a value}
+      shift 2
+      ;;
+    --data-center-ids)
+      DATA_CENTER_IDS=${2:?--data-center-ids requires a value}
+      shift 2
+      ;;
+    --secure-cloud)
+      SECURE_CLOUD=1
+      shift
+      ;;
+    --board-backend)
+      BOARD_BACKEND=${2:?--board-backend requires a value}
+      shift 2
+      ;;
+    --yaneuraou-read-timeout-seconds)
+      YANEURAOU_READ_TIMEOUT_SECONDS=${2:?--yaneuraou-read-timeout-seconds requires a value}
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+require_arg() {
+  local name=$1
+  local value=$2
+  if [[ -z "$value" ]]; then
+    echo "$name is required" >&2
+    usage >&2
+    exit 1
+  fi
+}
+
+require_arg "--checkpoint" "$CHECKPOINT"
+require_arg "--opponent" "$OPPONENT"
+require_arg "--mcts-simulations" "$MCTS_SIMULATIONS"
+require_arg "--games" "$GAMES"
+require_arg "--output-dir" "$OUTPUT_DIR"
+
+YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=
+YANEURAOU_GO_COMMAND=
+case "$OPPONENT" in
+  material-nodes1)
+    YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-material-avx2
+    YANEURAOU_GO_COMMAND="go nodes 1"
+    ;;
+  material-nodes1000)
+    YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-material-avx2
+    YANEURAOU_GO_COMMAND="go nodes 1000"
+    ;;
+  suisho5-nodes1)
+    YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-suisho5-avx2
+    YANEURAOU_GO_COMMAND="go nodes 1"
+    ;;
+  suisho5-nodes1000)
+    YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-suisho5-avx2
+    YANEURAOU_GO_COMMAND="go nodes 1000"
+    ;;
+  suisho5-byoyomi1000)
+    YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX=shogi/engine-artifacts/yaneuraou-suisho5-avx2
+    YANEURAOU_GO_COMMAND="go byoyomi 1000"
+    ;;
+  *)
+    echo "Unknown opponent preset: $OPPONENT" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
+
+RUN_ID=$(basename "$OUTPUT_DIR")
 
 if [[ -z "$ARENA_REPOSITORY_URL" ]]; then
   echo "ARENA_REPOSITORY_URL is required when origin remote is unset" >&2
@@ -48,6 +215,10 @@ fi
 CLOUD_ARGS=()
 if [[ "$SECURE_CLOUD" == "1" ]]; then
   CLOUD_ARGS+=(--secure-cloud)
+fi
+RUNPOD_ARGS=()
+if [[ "$DRY_RUN" == "1" ]]; then
+  RUNPOD_ARGS+=(--dry-run)
 fi
 
 CHECKPOINT_ABS=$(realpath "$CHECKPOINT")
@@ -107,6 +278,7 @@ python3 "$RUNPOD_JOB" \
   --template-id "$RUNPOD_TEMPLATE_ID" \
   --gpu-type "$GPU_TYPE" \
   "${CLOUD_ARGS[@]}" \
+  "${RUNPOD_ARGS[@]}" \
   ${DATA_CENTER_IDS:+--data-center-ids "$DATA_CENTER_IDS"} \
   --container-disk-size 30 \
   --volume-size 0 \
@@ -121,26 +293,17 @@ rm -rf shogi-arena-agent yaneuraou-engine-artifact
 GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch '$ARENA_REF' '$ARENA_REPOSITORY_URL' shogi-arena-agent
 cd /root/shogi-arena-agent
 /root/intrep/.venv/bin/python -m pip install -e .
-REMOTE_YANEURAOU_EVAL_DIR='$YANEURAOU_EVAL_DIR'
 ENGINE_ARTIFACT_DIR=/root/yaneuraou-engine-artifact
 R2_ENV_FILE='/root/intrep/$R2_REMOTE_ENV' bash /root/intrep/scripts/restore_r2_artifact.sh '$YANEURAOU_ENGINE_ARTIFACT_R2_PREFIX' \"\$ENGINE_ARTIFACT_DIR\"
 chmod +x \"\$ENGINE_ARTIFACT_DIR/bin/YaneuraOu-runpod\"
 YANEURAOU_COMMAND=\"\$ENGINE_ARTIFACT_DIR/bin/YaneuraOu-runpod\"
-if [[ -z \"\$REMOTE_YANEURAOU_EVAL_DIR\" && -d \"\$ENGINE_ARTIFACT_DIR/eval\" ]]; then
+REMOTE_YANEURAOU_EVAL_DIR=
+if [[ -d \"\$ENGINE_ARTIFACT_DIR/eval\" ]]; then
   REMOTE_YANEURAOU_EVAL_DIR=\"\$ENGINE_ARTIFACT_DIR/eval\"
 fi
 YANEURAOU_OPTION_ARGS=()
 if [[ -n \"\$REMOTE_YANEURAOU_EVAL_DIR\" ]]; then
   YANEURAOU_OPTION_ARGS+=(--player-b-usi-option \"EvalDir=\$REMOTE_YANEURAOU_EVAL_DIR\")
-fi
-if [[ -n '$YANEURAOU_THREADS' ]]; then
-  YANEURAOU_OPTION_ARGS+=(--player-b-usi-option 'Threads=$YANEURAOU_THREADS')
-fi
-if [[ -n '$YANEURAOU_HASH_MB' ]]; then
-  YANEURAOU_OPTION_ARGS+=(--player-b-usi-option 'Hash=$YANEURAOU_HASH_MB')
-fi
-if [[ -n '$YANEURAOU_FV_SCALE' ]]; then
-  YANEURAOU_OPTION_ARGS+=(--player-b-usi-option 'FV_SCALE=$YANEURAOU_FV_SCALE')
 fi
 mkdir -p '$REMOTE_OUTPUT'
 cd /root/shogi-arena-agent
@@ -278,5 +441,4 @@ print('device', torch.cuda.get_device_name(0))
 PY
 " \
   --output "$OUTPUT_DIR" \
-  --timings-output "$OUTPUT_DIR/runpod_timings.json" \
-  "$@"
+  --timings-output "$OUTPUT_DIR/runpod_timings.json"
