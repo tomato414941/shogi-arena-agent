@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import argparse
 import os
+from typing import Any
 
-from shogi_arena_agent.csa_player import new_python_shogi_csa_protocol, run_csa_player
+import shogi
+
+from shogi_arena_agent.csa_player import (
+    CsaProtocol,
+    new_python_shogi_csa_protocol,
+    run_csa_player,
+)
 from shogi_arena_agent.player_cli import (
     add_player_arguments,
     player_context,
@@ -42,7 +49,7 @@ def main() -> None:
     )
     with player_context(spec, name=args.username) as built:
         results = run_csa_player(
-            protocol=new_python_shogi_csa_protocol(),
+            protocol=_LoggingCsaProtocol(new_python_shogi_csa_protocol()),
             player=built.player,
             host=args.host,
             port=args.port,
@@ -55,6 +62,63 @@ def main() -> None:
             f"game={result.game_count} moves_played={result.moves_played} end_message={result.end_message}",
             flush=True,
         )
+
+
+class _LoggingCsaProtocol:
+    def __init__(self, protocol: CsaProtocol) -> None:
+        self.protocol = protocol
+
+    def open(self, host: str, port: int = 0) -> object:
+        print(f"csa_open host={host} port={port}", flush=True)
+        result = self.protocol.open(host, port)
+        print("csa_opened", flush=True)
+        return result
+
+    def login_ex(self, username: str, password: str) -> object:
+        print(f"csa_login username={username}", flush=True)
+        result = self.protocol.login_ex(username, password)
+        print("csa_logged_in", flush=True)
+        return result
+
+    def wait_match(self, block: bool = True) -> dict[str, object] | None:
+        print("csa_wait_match", flush=True)
+        match = self.protocol.wait_match(block=block)
+        print(f"csa_match_received={match is not None}", flush=True)
+        return match
+
+    def agree(self) -> object:
+        print("csa_agree", flush=True)
+        result = self.protocol.agree()
+        print("csa_agreed", flush=True)
+        return result
+
+    def wait_server_message(
+        self,
+        board: shogi.Board,
+        block: bool = True,
+    ) -> tuple[int | None, str | None, int | None, int | None] | None:
+        message = self.protocol.wait_server_message(board, block=block)
+        _color, move_usi, _time, end_message = message or (None, None, None, None)
+        if move_usi is not None:
+            print(f"csa_server_move move={move_usi}", flush=True)
+        if end_message is not None:
+            print(f"csa_server_end message={end_message}", flush=True)
+        return message
+
+    def move(self, piece_type: int, color: int, move: shogi.Move) -> object:
+        print(f"csa_send_move move={move.usi()}", flush=True)
+        return self.protocol.move(piece_type, color, move)
+
+    def resign(self) -> object:
+        print("csa_resign", flush=True)
+        return self.protocol.resign()
+
+    def logout(self) -> object:
+        print("csa_logout", flush=True)
+        return self.protocol.logout()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.protocol, name)
 
 
 if __name__ == "__main__":
