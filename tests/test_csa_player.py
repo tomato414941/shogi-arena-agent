@@ -4,7 +4,7 @@ import unittest
 
 import shogi
 
-from shogi_arena_agent.csa_player import run_csa_player
+from shogi_arena_agent.csa_player import PythonShogiCsaProtocol, run_csa_player
 from shogi_arena_agent.usi import UsiEngine, UsiPosition
 
 
@@ -110,6 +110,40 @@ class CsaPlayerTest(unittest.TestCase):
             ("move", shogi.PROM_PAWN, shogi.BLACK, "2d2c+"),
             protocol.calls,
         )
+
+    def test_python_shogi_protocol_skips_login_notice_before_game_summary(self) -> None:
+        protocol = PythonShogiCsaProtocol()
+        lines = iter(
+            (
+                "##[LOGIN] +OK x1",
+                "BEGIN Game_Summary",
+                "Protocol_Version:1.2",
+                "Format:Shogi 1.0",
+                "Declaration:Jishogi 1.1",
+                "Game_ID:test",
+                "Name+:black",
+                "Name-:white",
+                "To_Move:+",
+                "Your_Turn:+",
+                "BEGIN Time",
+                "Time_Unit:1sec",
+                "Total_Time:300",
+                "Byoyomi:10",
+                "Delay:0",
+                "Increment:10",
+                "END Time",
+                "BEGIN Position",
+                "PI",
+                "END Position",
+                "END Game_Summary",
+            )
+        )
+        protocol.read_line = lambda block=True: next(lines)
+
+        summary = protocol.read_game_summary()
+
+        self.assertTrue(summary.startswith("BEGIN Game_Summary\n"))
+        self.assertNotIn("##[LOGIN]", summary)
 
 
 if __name__ == "__main__":

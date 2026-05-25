@@ -28,12 +28,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--username", default=os.environ.get("CSA_USERNAME"))
     parser.add_argument("--password", default=os.environ.get("CSA_PASSWORD"))
     parser.add_argument("--games", type=int, default=1)
+    parser.add_argument("--game-name")
+    parser.add_argument("--game-side", choices=("black", "white"))
     add_player_arguments(parser, "player")
     args = parser.parse_args()
     if not args.username:
         parser.error("--username or CSA_USERNAME is required")
     if not args.password:
         parser.error("--password or CSA_PASSWORD is required")
+    if args.game_name and not args.game_side:
+        parser.error("--game-side is required when --game-name is set")
     validate_player_arguments(parser, args, "player")
     return args
 
@@ -49,7 +53,11 @@ def main() -> None:
     )
     with player_context(spec, name=args.username) as built:
         results = run_csa_player(
-            protocol=_LoggingCsaProtocol(new_python_shogi_csa_protocol()),
+            protocol=_LoggingCsaProtocol(
+                new_python_shogi_csa_protocol(
+                    game_command=_game_command(args.game_name, args.game_side)
+                )
+            ),
             player=built.player,
             host=args.host,
             port=args.port,
@@ -62,6 +70,15 @@ def main() -> None:
             f"game={result.game_count} moves_played={result.moves_played} end_message={result.end_message}",
             flush=True,
         )
+
+
+def _game_command(game_name: str | None, game_side: str | None) -> str | None:
+    if game_name is None:
+        return None
+    side = {"black": "+", "white": "-"}.get(game_side or "")
+    if side is None:
+        raise ValueError("--game-side is required when --game-name is set")
+    return f"%%GAME {game_name} {side}"
 
 
 class _LoggingCsaProtocol:
