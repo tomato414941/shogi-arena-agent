@@ -14,6 +14,7 @@ from shogi_arena_agent.shogi_game import (
     save_shogi_game_records_jsonl,
     shogi_game_record_to_json,
 )
+from shogi_arena_agent.start_positions import random_legal_opening_start_positions
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
 from shogi_arena_agent.usi_process import UsiGoResult
 
@@ -70,6 +71,13 @@ class ShogiGameTest(unittest.TestCase):
     def test_position_command_with_moves(self) -> None:
         self.assertEqual(position_command(("7g7f", "3c3d")), "position startpos moves 7g7f 3c3d")
 
+    def test_position_command_extends_start_position(self) -> None:
+        start_position = random_legal_opening_start_positions(count=1, opening_plies=2, seed=7)[0]
+
+        command = position_command(("2g2f",), start_position=start_position)
+
+        self.assertEqual(command, start_position.usi_position.command + " 2g2f")
+
     def test_default_engines_play_legal_moves_until_max_plies(self) -> None:
         result = play_shogi_game(max_plies=6)
 
@@ -85,6 +93,14 @@ class ShogiGameTest(unittest.TestCase):
         self.assertTrue(result.transitions[0].next_position_sfen)
         self.assertEqual(result.transitions[-1].done, True)
         self.assertEqual(result.transitions[-1].reward, 0.0)
+
+    def test_can_start_from_generated_start_position(self) -> None:
+        start_position = random_legal_opening_start_positions(count=1, opening_plies=2, seed=7)[0]
+
+        result = play_shogi_game(max_plies=1, start_position=start_position)
+
+        self.assertEqual(result.initial_position_sfen, start_position.sfen)
+        self.assertEqual(result.transitions[0].position_sfen, start_position.sfen)
 
     def test_records_explicit_actor_specs(self) -> None:
         result = play_shogi_game(

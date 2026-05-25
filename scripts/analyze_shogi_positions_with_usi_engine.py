@@ -4,12 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
-from intrep.worlds.shogi.engine_analysis import (
+from intrep.domains.shogi.engine_analysis import (
     analyze_shogi_position_with_usi_session,
     shogi_analysis_positions_from_game_records,
     write_shogi_engine_analysis_jsonl,
 )
-from intrep.worlds.shogi.game_record import ShogiActorSpec, load_shogi_game_records_jsonl
+from intrep.domains.shogi.game_record import ShogiActorSpec, load_shogi_game_records_jsonl
 from shogi_arena_agent.multipv_policy import MultiPVPolicyTargetConfig, configure_multipv_player_options
 from shogi_arena_agent.usi_process import UsiProcess
 

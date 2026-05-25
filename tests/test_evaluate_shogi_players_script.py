@@ -317,6 +317,52 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
         self.assertEqual(load_kwargs[0]["temperature"], 1.0)
         self.assertEqual(load_kwargs[0]["temperature_plies"], 0)
 
+    def test_random_legal_start_positions_pair_each_position_on_both_sides(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                module.main(
+                    [
+                        "--player-a-kind",
+                        "deterministic_legal",
+                        "--player-b-kind",
+                        "deterministic_legal",
+                        "--start-position-set",
+                        "random-legal-opening",
+                        "--start-position-count",
+                        "2",
+                        "--start-position-seed",
+                        "7",
+                        "--opening-plies",
+                        "2",
+                        "--max-plies",
+                        "1",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+            start_positions = [
+                json.loads(line)
+                for line in output_path.with_name("start_positions.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            summary = json.loads(stdout.getvalue())
+
+        self.assertEqual(len(start_positions), 2)
+        self.assertEqual(len(records), 4)
+        self.assertEqual(records[0].initial_position_sfen, start_positions[0]["sfen"])
+        self.assertEqual(records[1].initial_position_sfen, start_positions[0]["sfen"])
+        self.assertEqual(records[2].initial_position_sfen, start_positions[1]["sfen"])
+        self.assertEqual(records[3].initial_position_sfen, start_positions[1]["sfen"])
+        self.assertEqual(records[0].black_actor.name, "player_a")
+        self.assertEqual(records[1].white_actor.name, "player_a")
+        self.assertEqual(summary["game_count"], 4)
+
 
 def _load_script_module() -> ModuleType:
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "evaluate_shogi_players.py"

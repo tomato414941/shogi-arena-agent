@@ -15,6 +15,11 @@ from shogi_arena_agent.shogi_generation import (
     generate_shogi_games,
     records_summary,
 )
+from shogi_arena_agent.start_positions import (
+    StartPosition,
+    random_legal_opening_start_positions,
+    save_start_positions_jsonl,
+)
 from shogi_arena_agent.usi import BOARD_BACKENDS
 
 STANDARD_MAX_PLIES = 320
@@ -33,6 +38,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--concurrent-games-per-process", type=int, default=1)
     parser.add_argument("--generation-worker-processes", type=int, default=1)
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--start-position-set", choices=("startpos", "random-legal-opening"), default="startpos")
+    parser.add_argument("--start-position-seed", type=int)
+    parser.add_argument("--opening-plies", type=int, default=0)
     parser.add_argument("--progress-every-plies", type=int, default=0)
     # Computer-shogi self-play should not end as a short artificial draw; use
     # the WCSC-style 320-ply cap as the default and warn on shorter overrides.
@@ -50,6 +58,10 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--generation-worker-processes must be positive")
     if args.progress_every_plies < 0:
         parser.error("--progress-every-plies must be non-negative")
+    if args.opening_plies < 0:
+        parser.error("--opening-plies must be non-negative")
+    if args.start_position_set == "random-legal-opening" and args.start_position_seed is None:
+        parser.error("--start-position-seed is required when --start-position-set random-legal-opening")
     _warn_short_max_plies(args.max_plies)
 
     if args.generation_worker_processes > 1:
@@ -57,9 +69,11 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     started_at = perf_counter()
+    start_positions = _start_positions_from_args(args)
+    _write_start_position_artifacts(args, start_positions)
     with GeneratedGameArtifacts(Path(args.out)) as artifacts:
         records = generate_shogi_games(
-            _generation_config_from_args(args),
+            _generation_config_from_args(args, start_positions=start_positions),
             checkpoint_evaluator_cls=ShogiMoveChoiceCheckpointEvaluator,
             record_callback=artifacts.write_record,
             progress_callback=artifacts.write_progress,
@@ -67,7 +81,7 @@ def main(argv: list[str] | None = None) -> None:
     print(json.dumps(records_summary(records, wall_time_sec=perf_counter() - started_at), indent=2))
 
 
-def _generation_config_from_args(args: argparse.Namespace) -> ShogiGenerationConfig:
+def _generation_config_from_args(args: argparse.Namespace, *, start_positions: tuple[StartPosition, ...]) -> ShogiGenerationConfig:
     return ShogiGenerationConfig(
         black=_player_config_from_args(args, "black"),
         white=_player_config_from_args(args, "white"),
@@ -75,8 +89,26 @@ def _generation_config_from_args(args: argparse.Namespace) -> ShogiGenerationCon
         concurrent_games_per_process=args.concurrent_games_per_process,
         max_plies=args.max_plies,
         board_backend=args.board_backend,
+        start_positions=start_positions,
         progress_every_plies=args.progress_every_plies,
     )
+
+
+def _start_positions_from_args(args: argparse.Namespace) -> tuple[StartPosition, ...]:
+    if args.start_position_set == "startpos":
+        return ()
+    return random_legal_opening_start_positions(
+        count=args.games,
+        opening_plies=args.opening_plies,
+        seed=args.start_position_seed,
+        board_backend=args.board_backend,
+    )
+
+
+def _write_start_position_artifacts(args: argparse.Namespace, start_positions: tuple[StartPosition, ...]) -> None:
+    if not start_positions:
+        return
+    save_start_positions_jsonl(start_positions, Path(args.out).with_name("start_positions.jsonl"))
 
 
 def _player_config_from_args(args: argparse.Namespace, prefix: str) -> PlayerSpec:
@@ -162,9 +194,15 @@ def _shard_command(
         str(args.max_plies),
         "--board-backend",
         args.board_backend,
+        "--start-position-set",
+        args.start_position_set,
+        "--opening-plies",
+        str(args.opening_plies),
     ]
     if args.seed is not None:
         command.extend(["--seed", str(args.seed + shard_index)])
+    if args.start_position_seed is not None:
+        command.extend(["--start-position-seed", str(args.start_position_seed + shard_index)])
     return command
 
 

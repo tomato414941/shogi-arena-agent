@@ -6,8 +6,9 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
-from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine
+from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis
+from shogi_arena_agent.start_positions import StartPosition, startpos
+from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, board_from_position
 from shogi_arena_agent.usi_process import UsiGoResult
 
 
@@ -111,10 +112,12 @@ class InProcessShogiPlayer:
         return UsiGoResult(bestmove=move, decision_telemetry=_policy_decision_telemetry(self.engine.active_policy))
 
 
-def position_command(moves: tuple[str, ...]) -> str:
+def position_command(moves: tuple[str, ...], *, start_position: StartPosition | None = None) -> str:
+    start_position = start_position or startpos()
     if not moves:
-        return "position startpos"
-    return "position startpos moves " + " ".join(moves)
+        return start_position.usi_position.command
+    separator = " " if " moves " in f" {start_position.usi_position.command} " else " moves "
+    return start_position.usi_position.command + separator + " ".join(moves)
 
 
 def play_shogi_game(
@@ -125,8 +128,10 @@ def play_shogi_game(
     white_actor: ShogiActorSpec | None = None,
     max_plies: int = 32,
     board_backend: str = "python-shogi",
+    start_position: StartPosition | None = None,
 ) -> ShogiGameRecord:
-    board = new_board(backend=board_backend)
+    start_position = start_position or startpos()
+    board = board_from_position(start_position.usi_position, backend=board_backend)
     initial_position_sfen = board.sfen()
     black_engine = black or UsiEngine(name="black")
     white_engine = white or UsiEngine(name="white")
@@ -145,7 +150,7 @@ def play_shogi_game(
     for ply in range(max_plies):
         player = players[ply % 2]
         moves = tuple(record.action_usi for record in transitions)
-        position = position_command(moves)
+        position = position_command(moves, start_position=start_position)
         side = board_turn_name(board)
         position_sfen = board.sfen()
         legal_moves = legal_move_usis(board)

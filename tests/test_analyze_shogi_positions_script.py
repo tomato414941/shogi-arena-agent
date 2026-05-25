@@ -10,11 +10,11 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
-from intrep.worlds.shogi.engine_analysis import load_shogi_engine_analysis_jsonl
-from intrep.worlds.shogi.game_record import (
+from intrep.domains.shogi.engine_analysis import load_shogi_engine_analysis_jsonl
+from intrep.domains.shogi.game_record import (
     ShogiActorSpec,
     ShogiGameRecord,
-    ShogiTransitionRecord,
+    ShogiMoveRecord,
     write_shogi_game_records_jsonl,
 )
 from shogi_arena_agent.usi_process import UsiGoResult
@@ -91,16 +91,9 @@ def _record() -> ShogiGameRecord:
         black_actor=actor,
         white_actor=actor,
         initial_position_sfen="lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-        transitions=(
-            ShogiTransitionRecord(
-                ply=0,
-                side="black",
-                position_sfen="lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
-                legal_moves=("7g7f", "2g2f"),
+        moves=(
+            ShogiMoveRecord(
                 action_usi="7g7f",
-                next_position_sfen="lnsgkgsnl/1r5b1/ppppppppp/9/9/2P6/PP1PPPPPP/1B5R1/LNSGKGSNL w - 2",
-                reward=0.0,
-                done=True,
             ),
         ),
         winner=None,

@@ -25,6 +25,7 @@ from shogi_arena_agent.shogi_game import (
     play_shogi_game,
     save_shogi_game_records_jsonl,
 )
+from shogi_arena_agent.start_positions import StartPosition
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class PlayerMatchRunConfig:
     player_b: PlayerSpec
     games: int
     max_plies: int
+    start_positions: tuple[StartPosition, ...] = ()
     progress_every_games: int = 0
     start_game_index: int = 0
 
@@ -57,8 +59,10 @@ def run_player_match(config: PlayerMatchRunConfig, *, progress_callback: Progres
         player_a = stack.enter_context(_player_context(config.player_a, name="player_a", static_player=player_a_static))
         player_b = stack.enter_context(_player_context(config.player_b, name="player_b", static_player=player_b_static))
         started_at = perf_counter()
-        for offset in range(config.games):
+        scheduled_games = _scheduled_game_count(config)
+        for offset in range(scheduled_games):
             game_index = config.start_game_index + offset
+            start_position = _start_position_for_offset(config, offset)
             if game_index % 2 == 0:
                 results.append(
                     play_shogi_game(
@@ -67,6 +71,7 @@ def run_player_match(config: PlayerMatchRunConfig, *, progress_callback: Progres
                         black_actor=player_a.actor,
                         white_actor=player_b.actor,
                         max_plies=config.max_plies,
+                        start_position=start_position,
                     )
                 )
             else:
@@ -77,6 +82,7 @@ def run_player_match(config: PlayerMatchRunConfig, *, progress_callback: Progres
                         black_actor=player_b.actor,
                         white_actor=player_a.actor,
                         max_plies=config.max_plies,
+                        start_position=start_position,
                     )
                 )
             player_a_sides.append(_player_a_side(game_index))
@@ -85,7 +91,7 @@ def run_player_match(config: PlayerMatchRunConfig, *, progress_callback: Progres
                 _emit_progress(
                     evaluation,
                     completed_games=offset + 1,
-                    total_games=config.games,
+                    total_games=scheduled_games,
                     elapsed_sec=perf_counter() - started_at,
                     progress_callback=progress_callback,
                 )
@@ -93,6 +99,8 @@ def run_player_match(config: PlayerMatchRunConfig, *, progress_callback: Progres
 
 
 def run_sharded_player_match(config: ShardedPlayerMatchConfig) -> MatchEvaluation:
+    if config.match.start_positions:
+        raise RuntimeError("match worker processes do not support start positions yet")
     config.out.parent.mkdir(parents=True, exist_ok=True)
     commands: list[list[str]] = []
     shard_paths: list[Path] = []
@@ -151,6 +159,18 @@ def _player_context(
 
 def _shard_game_counts(games: int, worker_processes: int) -> list[int]:
     return [games // worker_processes + (1 if index < games % worker_processes else 0) for index in range(worker_processes)]
+
+
+def _scheduled_game_count(config: PlayerMatchRunConfig) -> int:
+    if config.start_positions:
+        return len(config.start_positions) * 2
+    return config.games
+
+
+def _start_position_for_offset(config: PlayerMatchRunConfig, offset: int) -> StartPosition | None:
+    if not config.start_positions:
+        return None
+    return config.start_positions[offset // 2]
 
 
 def _shard_command(

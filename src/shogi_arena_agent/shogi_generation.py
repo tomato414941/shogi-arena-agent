@@ -10,7 +10,7 @@ from statistics import mean
 from time import perf_counter
 from typing import Any
 
-from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, new_board
+from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis
 from shogi_arena_agent.multi_position_mcts_search_executor import MultiPositionMctsSearchExecutor
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
@@ -32,7 +32,8 @@ from shogi_arena_agent.shogi_game import (
     play_shogi_game,
     position_command,
 )
-from shogi_arena_agent.usi import UsiPosition
+from shogi_arena_agent.start_positions import StartPosition, startpos
+from shogi_arena_agent.usi import UsiPosition, board_from_position
 
 GenerationProgressCallback = Callable[[dict[str, Any]], None]
 ShogiGameRecordCallback = Callable[[ShogiGameRecord], None]
@@ -46,6 +47,7 @@ class ShogiGenerationConfig:
     concurrent_games_per_process: int
     max_plies: int
     board_backend: str
+    start_positions: tuple[StartPosition, ...] = ()
     progress_every_plies: int = 0
 
 
@@ -56,6 +58,7 @@ def generate_shogi_games(
     record_callback: ShogiGameRecordCallback | None = None,
     progress_callback: GenerationProgressCallback | None = None,
 ) -> tuple[ShogiGameRecord, ...]:
+    _validate_start_position_count(config)
     if config.concurrent_games_per_process > 1:
         return _play_multi_position_checkpoint_mcts_games(
             config,
@@ -77,6 +80,7 @@ def generate_shogi_games(
                 white_actor=white.actor,
                 max_plies=config.max_plies,
                 board_backend=config.board_backend,
+                start_position=_start_position_for_game(config, _game_index),
             )
             records.append(record)
             if record_callback is not None:
@@ -155,8 +159,13 @@ def _play_multi_position_checkpoint_mcts_games(
         evaluator_cls=checkpoint_evaluator_cls,
     )
     games = [
-        _ActiveGeneratedGame(black_actor=black_actor, white_actor=white_actor, board_backend=config.board_backend)
-        for _ in range(config.games)
+        _ActiveGeneratedGame(
+            black_actor=black_actor,
+            white_actor=white_actor,
+            board_backend=config.board_backend,
+            start_position=_start_position_for_game(config, index),
+        )
+        for index in range(config.games)
     ]
     remaining = set(range(config.games))
     started_at = perf_counter()
@@ -168,7 +177,7 @@ def _play_multi_position_checkpoint_mcts_games(
         for indexes, selector in ((black_indexes, black_selector), (white_indexes, white_selector)):
             for offset in range(0, len(indexes), config.concurrent_games_per_process):
                 batch_indexes = indexes[offset : offset + config.concurrent_games_per_process]
-                positions = [UsiPosition(position_command(games[index].moves)) for index in batch_indexes]
+                positions = [UsiPosition(games[index].position_command()) for index in batch_indexes]
                 results = selector.select_moves(positions)
                 multi_position_search_performance = _performance_payload(selector.last_multi_position_search_performance)
                 for game_index, result in zip(batch_indexes, results, strict=True):
@@ -206,9 +215,28 @@ def _player_context(
     return player_context(spec, name=name)
 
 
+def _validate_start_position_count(config: ShogiGenerationConfig) -> None:
+    if config.start_positions and len(config.start_positions) != config.games:
+        raise ValueError("start_positions must be empty or contain one start position per generated game")
+
+
+def _start_position_for_game(config: ShogiGenerationConfig, game_index: int) -> StartPosition | None:
+    if not config.start_positions:
+        return None
+    return config.start_positions[game_index]
+
+
 class _ActiveGeneratedGame:
-    def __init__(self, *, black_actor: ShogiActorSpec, white_actor: ShogiActorSpec, board_backend: str) -> None:
-        self.board = new_board(backend=board_backend)
+    def __init__(
+        self,
+        *,
+        black_actor: ShogiActorSpec,
+        white_actor: ShogiActorSpec,
+        board_backend: str,
+        start_position: StartPosition | None = None,
+    ) -> None:
+        self.start_position = start_position or startpos()
+        self.board = board_from_position(self.start_position.usi_position, backend=board_backend)
         self.black_actor = black_actor
         self.white_actor = white_actor
         self.initial_position_sfen = self.board.sfen()
@@ -219,6 +247,9 @@ class _ActiveGeneratedGame:
     @property
     def moves(self) -> tuple[str, ...]:
         return tuple(transition.action_usi for transition in self.transitions)
+
+    def position_command(self) -> str:
+        return position_command(self.moves, start_position=self.start_position)
 
     def apply_move(self, move: str, telemetry: ShogiDecisionTelemetry | None) -> bool:
         side = board_turn_name(self.board)

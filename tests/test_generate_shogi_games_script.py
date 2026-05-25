@@ -510,6 +510,48 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].white_actor.kind, "deterministic_legal")
         self.assertEqual(summary["game_count"], 2)
 
+    def test_random_legal_start_positions_use_one_position_per_game(self) -> None:
+        module = _load_script_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                module.main(
+                    [
+                        "--black-kind",
+                        "deterministic_legal",
+                        "--white-kind",
+                        "deterministic_legal",
+                        "--games",
+                        "2",
+                        "--start-position-set",
+                        "random-legal-opening",
+                        "--start-position-seed",
+                        "7",
+                        "--opening-plies",
+                        "2",
+                        "--max-plies",
+                        "1",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+            start_positions = [
+                json.loads(line)
+                for line in output_path.with_name("start_positions.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            summary = json.loads(stdout.getvalue())
+
+        self.assertEqual(len(start_positions), 2)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].initial_position_sfen, start_positions[0]["sfen"])
+        self.assertEqual(records[1].initial_position_sfen, start_positions[1]["sfen"])
+        self.assertEqual(summary["game_count"], 2)
+
     def test_generation_worker_processes_merge_shards(self) -> None:
         module = _load_script_module()
 

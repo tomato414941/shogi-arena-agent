@@ -20,6 +20,11 @@ from shogi_arena_agent.shogi_game import (
     ShogiGameRecord,
     save_shogi_game_records_jsonl,
 )
+from shogi_arena_agent.start_positions import (
+    StartPosition,
+    random_legal_opening_start_positions,
+    save_start_positions_jsonl,
+)
 
 STANDARD_MAX_PLIES = 320
 DEFAULT_MAX_PLIES = 320
@@ -38,6 +43,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--match-worker-processes", type=int, default=1)
     parser.add_argument("--progress-every-games", type=int, default=DEFAULT_PROGRESS_EVERY_GAMES)
     parser.add_argument("--start-game-index", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--start-position-set", choices=("startpos", "random-legal-opening"), default="startpos")
+    parser.add_argument("--start-position-count", type=int)
+    parser.add_argument("--start-position-seed", type=int)
+    parser.add_argument("--opening-plies", type=int, default=0)
     # Computer-shogi evaluation should not end as a short artificial draw; use
     # the WCSC-style 320-ply cap as the default and warn on shorter overrides.
     parser.add_argument("--max-plies", type=int, default=DEFAULT_MAX_PLIES)
@@ -51,9 +60,19 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--match-worker-processes must be positive")
     if args.progress_every_games < 0:
         parser.error("--progress-every-games must be non-negative")
+    if args.opening_plies < 0:
+        parser.error("--opening-plies must be non-negative")
+    if args.start_position_set == "random-legal-opening":
+        if args.start_position_count is None or args.start_position_count <= 0:
+            parser.error("--start-position-count must be positive when --start-position-set random-legal-opening")
+        if args.start_position_seed is None:
+            parser.error("--start-position-seed is required when --start-position-set random-legal-opening")
+        if args.match_worker_processes > 1:
+            parser.error("--match-worker-processes does not support generated start positions")
     _warn_short_max_plies(args.max_plies)
 
-    config = _match_config_from_args(args)
+    start_positions = _start_positions_from_args(args)
+    config = _match_config_from_args(args, start_positions=start_positions)
     if args.match_worker_processes > 1:
         evaluation = run_sharded_player_match(
             ShardedPlayerMatchConfig(
@@ -70,10 +89,11 @@ def main(argv: list[str] | None = None) -> None:
 
     evaluation = run_player_match(config, progress_callback=print_progress)
     save_shogi_game_records_jsonl(evaluation.results, Path(args.out))
+    _write_start_position_artifacts(args, start_positions)
     print(json.dumps(_evaluation_summary(evaluation), indent=2))
 
 
-def _match_config_from_args(args: argparse.Namespace) -> PlayerMatchRunConfig:
+def _match_config_from_args(args: argparse.Namespace, *, start_positions: tuple[StartPosition, ...]) -> PlayerMatchRunConfig:
     return PlayerMatchRunConfig(
         player_a=_player_config_from_args(args, "player-a"),
         player_b=_player_config_from_args(args, "player-b"),
@@ -81,6 +101,7 @@ def _match_config_from_args(args: argparse.Namespace) -> PlayerMatchRunConfig:
         max_plies=args.max_plies,
         progress_every_games=args.progress_every_games,
         start_game_index=args.start_game_index,
+        start_positions=start_positions,
     )
 
 
@@ -92,6 +113,22 @@ def _player_config_from_args(args: argparse.Namespace, prefix: str) -> PlayerSpe
         default_move_selection_temperature=EVALUATION_MOVE_SELECTION_TEMPERATURE,
         default_move_selection_temperature_plies=EVALUATION_MOVE_SELECTION_TEMPERATURE_PLIES,
     )
+
+
+def _start_positions_from_args(args: argparse.Namespace) -> tuple[StartPosition, ...]:
+    if args.start_position_set == "startpos":
+        return ()
+    return random_legal_opening_start_positions(
+        count=args.start_position_count,
+        opening_plies=args.opening_plies,
+        seed=args.start_position_seed,
+    )
+
+
+def _write_start_position_artifacts(args: argparse.Namespace, start_positions: tuple[StartPosition, ...]) -> None:
+    if not start_positions:
+        return
+    save_start_positions_jsonl(start_positions, Path(args.out).with_name("start_positions.jsonl"))
 
 
 def _evaluation_summary(evaluation: Any) -> dict[str, Any]:
