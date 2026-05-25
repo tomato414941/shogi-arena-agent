@@ -145,12 +145,16 @@ def _play_csa_match(
 
 
 class PythonShogiCsaProtocol(shogi.CSA.TCPProtocol):
-    def __init__(self, *, game_command: str | None = None) -> None:
+    def __init__(self, *, game_command: str | None = None, extended_login: bool = False) -> None:
         super().__init__()
         self.game_command = game_command
+        self.extended_login = extended_login
 
     def login_ex(self, username: str, password: str) -> object:
-        result = super().login_ex(username, password)
+        if self.extended_login:
+            result = super().login_ex(username, password)
+        else:
+            result = self.login(username, password)
         if self.game_command is not None:
             self.write(self.game_command + "\n")
         return result
@@ -174,8 +178,12 @@ class PythonShogiCsaProtocol(shogi.CSA.TCPProtocol):
                 return "\n".join(lines) + "\n"
 
 
-def new_python_shogi_csa_protocol(*, game_command: str | None = None) -> CsaProtocol:
-    return PythonShogiCsaProtocol(game_command=game_command)
+def new_python_shogi_csa_protocol(
+    *,
+    game_command: str | None = None,
+    extended_login: bool = False,
+) -> CsaProtocol:
+    return PythonShogiCsaProtocol(game_command=game_command, extended_login=extended_login)
 
 
 def _as_player(player: ShogiPlayer | UsiEngine) -> ShogiPlayer:

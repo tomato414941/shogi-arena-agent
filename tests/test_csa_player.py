@@ -145,6 +145,22 @@ class CsaPlayerTest(unittest.TestCase):
         self.assertTrue(summary.startswith("BEGIN Game_Summary\n"))
         self.assertNotIn("##[LOGIN]", summary)
 
+    def test_python_shogi_protocol_uses_plain_login_by_default(self) -> None:
+        class RecordingProtocol(PythonShogiCsaProtocol):
+            def __init__(self) -> None:
+                super().__init__()
+                self.commands: list[str] = []
+
+            def command(self, command: str) -> str:
+                self.commands.append(command)
+                return "LOGIN:user OK"
+
+        protocol = RecordingProtocol()
+
+        self.assertTrue(protocol.login_ex("user", "password"))
+
+        self.assertEqual(protocol.commands, ["LOGIN user password"])
+
 
 if __name__ == "__main__":
     unittest.main()
