@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 import shogi
@@ -66,9 +67,8 @@ def main() -> None:
             games=args.games,
         )
     for result in results:
-        print(
+        _log(
             f"game={result.game_count} moves_played={result.moves_played} end_message={result.end_message}",
-            flush=True,
         )
 
 
@@ -86,27 +86,27 @@ class _LoggingCsaProtocol:
         self.protocol = protocol
 
     def open(self, host: str, port: int = 0) -> object:
-        print(f"csa_open host={host} port={port}", flush=True)
+        _log(f"csa_open host={host} port={port}")
         result = self.protocol.open(host, port)
-        print("csa_opened", flush=True)
+        _log("csa_opened")
         return result
 
     def login_ex(self, username: str, password: str) -> object:
-        print(f"csa_login username={username}", flush=True)
+        _log(f"csa_login username={username}")
         result = self.protocol.login_ex(username, password)
-        print("csa_logged_in", flush=True)
+        _log("csa_logged_in")
         return result
 
     def wait_match(self, block: bool = True) -> dict[str, object] | None:
-        print("csa_wait_match", flush=True)
+        _log("csa_wait_match")
         match = self.protocol.wait_match(block=block)
-        print(f"csa_match_received={match is not None}", flush=True)
+        _log(f"csa_match_received={match is not None}")
         return match
 
     def agree(self) -> object:
-        print("csa_agree", flush=True)
+        _log("csa_agree")
         result = self.protocol.agree()
-        print("csa_agreed", flush=True)
+        _log("csa_agreed")
         return result
 
     def wait_server_message(
@@ -117,25 +117,34 @@ class _LoggingCsaProtocol:
         message = self.protocol.wait_server_message(board, block=block)
         _color, move_usi, _time, end_message = message or (None, None, None, None)
         if move_usi is not None:
-            print(f"csa_server_move move={move_usi}", flush=True)
+            _log(f"csa_server_move move={move_usi}")
         if end_message is not None:
-            print(f"csa_server_end message={end_message}", flush=True)
+            _log(f"csa_server_end message={end_message}")
         return message
 
     def move(self, piece_type: int, color: int, move: shogi.Move) -> object:
-        print(f"csa_send_move move={move.usi()}", flush=True)
+        _log(f"csa_send_move move={move.usi()}")
         return self.protocol.move(piece_type, color, move)
 
     def resign(self) -> object:
-        print("csa_resign", flush=True)
+        _log("csa_resign")
         return self.protocol.resign()
 
     def logout(self) -> object:
-        print("csa_logout", flush=True)
-        return self.protocol.logout()
+        _log("csa_logout")
+        try:
+            return self.protocol.logout()
+        except Exception as error:
+            _log(f"csa_logout_failed error={type(error).__name__}")
+            raise
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.protocol, name)
+
+
+def _log(message: str) -> None:
+    timestamp = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    print(f"{timestamp} {message}", flush=True)
 
 
 if __name__ == "__main__":

@@ -27,10 +27,12 @@ class FakeProtocol:
         *,
         initial_sfen: str | None = None,
         server_messages: tuple[CsaServerMessage, ...] = (),
+        logout_error: Exception | None = None,
     ) -> None:
         self.calls: list[tuple[object, ...]] = []
         self.initial_sfen = initial_sfen or shogi.Board().sfen()
         self.server_messages = list(server_messages)
+        self.logout_error = logout_error
 
     def open(self, host: str, port: int = 0) -> None:
         self.calls.append(("open", host, port))
@@ -61,6 +63,8 @@ class FakeProtocol:
 
     def logout(self) -> None:
         self.calls.append(("logout",))
+        if self.logout_error is not None:
+            raise self.logout_error
 
 
 class CsaPlayerTest(unittest.TestCase):
@@ -110,6 +114,26 @@ class CsaPlayerTest(unittest.TestCase):
             ("move", shogi.PROM_PAWN, shogi.BLACK, "2d2c+"),
             protocol.calls,
         )
+
+    def test_logout_failure_does_not_discard_completed_csa_game(self) -> None:
+        protocol = FakeProtocol(
+            server_messages=((shogi.WHITE, "3c3d", 1, None),),
+            logout_error=ValueError("Logout failed"),
+        )
+        policy = FixedPolicy(("7g7f", "resign"))
+
+        results = run_csa_player(
+            protocol=protocol,
+            player=UsiEngine(policy=policy),
+            host="example.test",
+            port=4081,
+            username="user",
+            password="pass",
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].moves_played, 2)
+        self.assertEqual(protocol.calls[-1], ("logout",))
 
     def test_python_shogi_protocol_skips_login_notice_before_game_summary(self) -> None:
         protocol = PythonShogiCsaProtocol()

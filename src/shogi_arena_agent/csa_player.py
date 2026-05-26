@@ -76,7 +76,10 @@ def run_csa_player(
                 )
             )
     finally:
-        protocol.logout()
+        try:
+            protocol.logout()
+        except Exception:
+            pass
     return tuple(results)
 
 
