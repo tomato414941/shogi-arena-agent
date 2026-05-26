@@ -9,6 +9,7 @@ from typing import Any, Iterator
 from shogi_arena_agent.deterministic_legal_policy import DeterministicLegalMovePolicy
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
+    max_visit_move_selection_config,
     visit_sampling_move_selection_config,
 )
 from shogi_arena_agent.mcts_move_selector import MctsMoveSelector
@@ -24,7 +25,7 @@ from shogi_arena_agent.usi import UsiEngine
 from shogi_arena_agent.usi_process import UsiProcess
 
 PLAYER_KINDS = ("checkpoint", "usi_engine", "deterministic_legal")
-MOVE_SELECTION_PROFILES = ("visit-sampling",)
+MOVE_SELECTION_PROFILES = ("max-visit", "visit-sampling")
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,7 @@ class BuiltPlayer:
 class CheckpointPolicyPlayerSpec:
     checkpoint: str
     checkpoint_id: str | None = None
-    move_selection_profile: str = "visit-sampling"
+    move_selection_profile: str = "max-visit"
     move_selection_temperature: float | None = None
     move_selection_temperature_plies: int | None = None
     move_selector: str = "mcts"
@@ -103,8 +104,8 @@ def player_spec_from_args(
     prefix: str,
     *,
     default_move_selection_profile: str,
-    default_move_selection_temperature: float,
-    default_move_selection_temperature_plies: int,
+    default_move_selection_temperature: float | None,
+    default_move_selection_temperature_plies: int | None,
     seed: int | None = None,
 ) -> PlayerSpec:
     kind = _arg(args, prefix, "kind")
@@ -277,6 +278,10 @@ def _move_selection_config(
     temperature: float | None = None,
     temperature_plies: int | None = None,
 ):
+    if profile == "max-visit":
+        if temperature is not None or temperature_plies is not None:
+            raise ValueError("max-visit move selection must not set temperature")
+        return max_visit_move_selection_config()
     if profile == "visit-sampling":
         kwargs: dict[str, object] = {"seed": seed}
         if temperature is not None:

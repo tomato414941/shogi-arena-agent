@@ -313,9 +313,9 @@ class EvaluateShogiPlayersScriptTest(unittest.TestCase):
                     ]
                 )
 
-        self.assertEqual(load_kwargs[0]["profile"], "visit-sampling")
-        self.assertEqual(load_kwargs[0]["temperature"], 1.0)
-        self.assertEqual(load_kwargs[0]["temperature_plies"], 0)
+        self.assertEqual(load_kwargs[0]["profile"], "max-visit")
+        self.assertIsNone(load_kwargs[0]["temperature"])
+        self.assertIsNone(load_kwargs[0]["temperature_plies"])
 
     def test_random_legal_start_positions_pair_each_position_on_both_sides(self) -> None:
         module = _load_script_module()

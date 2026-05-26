@@ -48,9 +48,9 @@ def main() -> None:
     spec = player_spec_from_args(
         args,
         "player",
-        default_move_selection_profile="visit-sampling",
-        default_move_selection_temperature=0.0,
-        default_move_selection_temperature_plies=0,
+        default_move_selection_profile="max-visit",
+        default_move_selection_temperature=None,
+        default_move_selection_temperature_plies=None,
     )
     with player_context(spec, name=args.username) as built:
         results = run_csa_player(

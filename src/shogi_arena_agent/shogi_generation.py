@@ -14,6 +14,7 @@ from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name
 from shogi_arena_agent.multi_position_mcts_search_executor import MultiPositionMctsSearchExecutor
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
+    max_visit_move_selection_config,
     visit_sampling_move_selection_config,
 )
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
@@ -389,6 +390,10 @@ def _move_selection_config(
     temperature: float | None = None,
     temperature_plies: int | None = None,
 ):
+    if profile == "max-visit":
+        if temperature is not None or temperature_plies is not None:
+            raise ValueError("max-visit move selection must not set temperature")
+        return max_visit_move_selection_config()
     if profile == "visit-sampling":
         kwargs: dict[str, object] = {"seed": seed}
         if temperature is not None:

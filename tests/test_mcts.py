@@ -6,7 +6,7 @@ import shogi
 
 from shogi_arena_agent.shogi_game import play_shogi_game
 from shogi_arena_agent.multi_position_mcts_search_executor import MultiPositionMctsSearchExecutor
-from shogi_arena_agent.mcts_config import MctsConfig, visit_sampling_move_selection_config
+from shogi_arena_agent.mcts_config import MctsConfig, max_visit_move_selection_config, visit_sampling_move_selection_config
 from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator
 from shogi_arena_agent.mcts_move_selector import (
     MctsMoveSelector,
@@ -183,6 +183,13 @@ class MctsMoveSelectorTest(unittest.TestCase):
         results = selector.select_moves([UsiPosition(), UsiPosition(), UsiPosition(), UsiPosition()])
 
         self.assertGreater(len({result.move for result in results}), 1)
+
+    def test_max_visit_selection_does_not_use_temperature(self) -> None:
+        config = max_visit_move_selection_config()
+
+        self.assertEqual(config.mode, "max_visit")
+        self.assertIsNone(config.temperature)
+        self.assertIsNone(config.temperature_plies)
 
     def test_multi_position_executor_batches_across_positions(self) -> None:
         evaluator = BatchCountingEvaluator()

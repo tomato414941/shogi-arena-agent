@@ -28,18 +28,27 @@ class MctsConfig:
 
 @dataclass(frozen=True)
 class MoveSelectionConfig:
-    mode: str = "visit_sample"
-    temperature: float = 1.0
-    temperature_plies: int = 40
+    mode: str = "max_visit"
+    temperature: float | None = None
+    temperature_plies: int | None = None
     seed: int | None = None
 
     def __post_init__(self) -> None:
-        if self.mode != "visit_sample":
-            raise ValueError("mode must be visit_sample")
-        if self.temperature <= 0.0:
-            raise ValueError("temperature must be positive")
-        if self.temperature_plies < 0:
-            raise ValueError("temperature_plies must be non-negative")
+        if self.mode == "max_visit":
+            if self.temperature is not None or self.temperature_plies is not None:
+                raise ValueError("max_visit selection must not set temperature")
+            return
+        if self.mode == "visit_sample":
+            if self.temperature is None or self.temperature <= 0.0:
+                raise ValueError("visit_sample temperature must be positive")
+            if self.temperature_plies is None or self.temperature_plies < 0:
+                raise ValueError("visit_sample temperature_plies must be non-negative")
+            return
+        raise ValueError("mode must be max_visit or visit_sample")
+
+
+def max_visit_move_selection_config() -> MoveSelectionConfig:
+    return MoveSelectionConfig(mode="max_visit")
 
 
 def visit_sampling_move_selection_config(

@@ -11,8 +11,8 @@ from shogi_arena_agent.usi import UsiPosition
 
 class MoveSelectionLike(Protocol):
     mode: str
-    temperature: float
-    temperature_plies: int
+    temperature: float | None
+    temperature_plies: int | None
 
 
 @dataclass(slots=True)
@@ -54,9 +54,15 @@ def select_final_move(
 
 
 def select_final_move_at_ply(root: MctsNode, ply: int, config: MoveSelectionLike, rng: random.Random) -> str:
-    if config.mode == "visit_sample" and ply < config.temperature_plies:
-        return _sample_visit_count_move(root, temperature=config.temperature, rng=rng)
-    return deterministic_final_move(root)
+    if config.mode == "visit_sample":
+        if config.temperature is None or config.temperature_plies is None:
+            raise ValueError("visit_sample selection requires temperature and temperature_plies")
+        if ply < config.temperature_plies:
+            return _sample_visit_count_move(root, temperature=config.temperature, rng=rng)
+        return deterministic_final_move(root)
+    if config.mode == "max_visit":
+        return deterministic_final_move(root)
+    raise ValueError(f"unsupported final move selection mode: {config.mode}")
 
 
 def deterministic_final_move(root: MctsNode) -> str:

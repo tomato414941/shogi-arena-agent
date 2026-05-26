@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis
-from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, visit_sampling_move_selection_config
+from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, max_visit_move_selection_config
 from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator, UniformPolicyValueEvaluator
 from shogi_arena_agent.mcts_performance import (
     MultiPositionMctsPerformance,
@@ -51,7 +51,7 @@ class MultiPositionMctsSearchExecutor:
     ) -> None:
         self.evaluator = evaluator or UniformPolicyValueEvaluator()
         self.config = config or MctsConfig()
-        self.move_selection = move_selection or visit_sampling_move_selection_config()
+        self.move_selection = move_selection or max_visit_move_selection_config()
         self._rng = random.Random(self.move_selection.seed)
         self.last_multi_position_search_performance: MultiPositionMctsPerformance | None = None
 
@@ -221,7 +221,7 @@ class _MultiPositionSearchState:
     model_wall_time_sec: float = 0.0
     leaf_eval_batch_sizes: list[int] = field(default_factory=list)
     phase_wall_time_sec: dict[str, float] = field(default_factory=dict)
-    move_selection: MoveSelectionConfig = field(default_factory=visit_sampling_move_selection_config)
+    move_selection: MoveSelectionConfig = field(default_factory=max_visit_move_selection_config)
     rng: random.Random = field(default_factory=random.Random)
 
     @classmethod

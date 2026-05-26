@@ -4,7 +4,7 @@ import random
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis
-from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, visit_sampling_move_selection_config
+from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, max_visit_move_selection_config
 from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator, UniformPolicyValueEvaluator
 from shogi_arena_agent.mcts_performance import MctsMovePerformance, leaf_eval_batch_metrics
 from shogi_arena_agent.mcts_tree import (
@@ -209,7 +209,7 @@ class MctsMoveSelector:
     ) -> None:
         self.evaluator = evaluator or UniformPolicyValueEvaluator()
         self.config = config or MctsConfig()
-        self.move_selection = move_selection or visit_sampling_move_selection_config()
+        self.move_selection = move_selection or max_visit_move_selection_config()
         self._default_session = self.new_session()
         self.last_policy_targets: dict[str, float] | None = None
         self.last_search_evidence: dict[str, object] | None = None
