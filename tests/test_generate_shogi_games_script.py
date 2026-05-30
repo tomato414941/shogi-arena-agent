@@ -289,6 +289,10 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             "mcts_root_child_visit_counts",
             records[0].transitions[0].decision_telemetry.search_evidence,
         )
+        self.assertIn(
+            "mcts_root_mean_value",
+            records[0].transitions[0].decision_telemetry.search_evidence,
+        )
         self.assertIn("generation_wall_time_sec", summary)
         self.assertIn("inference_performance", summary)
         self.assertIn("multi_position_search_performance", summary)

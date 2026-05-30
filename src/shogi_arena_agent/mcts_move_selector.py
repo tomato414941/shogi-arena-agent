@@ -14,6 +14,7 @@ from shogi_arena_agent.mcts_tree import (
     expanded_children,
     position_moves,
     root_child_visit_counts,
+    root_mean_value,
     select_final_move,
     select_puct_child,
     visit_count_policy_targets,
@@ -76,6 +77,7 @@ class MctsSearchSession:
         self.last_policy_targets = visit_count_policy_targets(root)
         self.last_search_evidence = {
             "mcts_root_child_visit_counts": root_child_visit_counts(root),
+            "mcts_root_mean_value": root_mean_value(root),
         }
         self.last_performance = self._performance_since(started_at, output_count=completed_simulations)
         selected_move = select_final_move(root, position, self.move_selection, self._rng)

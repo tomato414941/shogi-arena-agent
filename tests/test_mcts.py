@@ -108,6 +108,9 @@ class MctsMoveSelectorTest(unittest.TestCase):
         visit_counts = policy.last_search_evidence["mcts_root_child_visit_counts"]
         self.assertIsInstance(visit_counts, dict)
         self.assertIn("7g7f", visit_counts)
+        self.assertIsInstance(policy.last_search_evidence["mcts_root_mean_value"], float)
+        self.assertGreaterEqual(policy.last_search_evidence["mcts_root_mean_value"], -1.0)
+        self.assertLessEqual(policy.last_search_evidence["mcts_root_mean_value"], 1.0)
 
     def test_records_move_performance(self) -> None:
         policy = MctsMoveSelector(config=MctsConfig(simulation_count=4))
@@ -205,6 +208,8 @@ class MctsMoveSelectorTest(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertTrue(all(result.move != "resign" for result in results))
         self.assertTrue(all(result.search_evidence is not None for result in results))
+        assert results[0].search_evidence is not None
+        self.assertIsInstance(results[0].search_evidence["mcts_root_mean_value"], float)
         self.assertIn(2, evaluator.batch_sizes)
 
     def test_multi_position_executor_records_phase_timings(self) -> None:

@@ -20,6 +20,7 @@ from shogi_arena_agent.mcts_tree import (
     expanded_children,
     position_ply,
     root_child_visit_counts,
+    root_mean_value,
     select_final_move_at_ply,
     select_puct_child,
     visit_count_policy_targets,
@@ -280,6 +281,7 @@ class _MultiPositionSearchState:
             policy_targets=visit_count_policy_targets(self.root),
             search_evidence={
                 "mcts_root_child_visit_counts": root_child_visit_counts(self.root),
+                "mcts_root_mean_value": root_mean_value(self.root),
             },
             performance=_multi_position_move_performance_since(
                 self.started_at,
