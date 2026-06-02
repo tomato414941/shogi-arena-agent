@@ -31,6 +31,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--concurrent-games-per-process", type=int, default=1)
     parser.add_argument("--mcts-simulations", type=int, default=128)
     parser.add_argument("--mcts-nn-leaf-eval-batch-limit", type=int, default=64)
+    parser.add_argument("--central-evaluator-batch-size-limit", type=int)
+    parser.add_argument("--central-evaluator-flush-timeout-sec", type=float, default=0.002)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     parser.add_argument("--seed", type=int)
@@ -51,6 +53,8 @@ def main(argv: list[str] | None = None) -> None:
         max_plies=args.max_plies,
         mcts_simulations=args.mcts_simulations,
         nn_leaf_eval_batch_limit=args.mcts_nn_leaf_eval_batch_limit,
+        central_evaluator_batch_size_limit=args.central_evaluator_batch_size_limit,
+        central_evaluator_flush_timeout_sec=args.central_evaluator_flush_timeout_sec,
         device=args.device,
         board_backend=args.board_backend,
         move_selection=visit_sampling_move_selection_config(
@@ -79,6 +83,10 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error("--mcts-simulations must be positive")
     if args.mcts_nn_leaf_eval_batch_limit <= 0:
         parser.error("--mcts-nn-leaf-eval-batch-limit must be positive")
+    if args.central_evaluator_batch_size_limit is not None and args.central_evaluator_batch_size_limit <= 0:
+        parser.error("--central-evaluator-batch-size-limit must be positive")
+    if args.central_evaluator_flush_timeout_sec < 0.0:
+        parser.error("--central-evaluator-flush-timeout-sec must be non-negative")
     if args.progress_every_plies < 0:
         parser.error("--progress-every-plies must be non-negative")
     if args.max_plies <= 0:

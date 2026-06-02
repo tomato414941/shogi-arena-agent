@@ -9,6 +9,7 @@ from statistics import mean
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard, board_is_black_turn, board_turn_name, copy_board, legal_move_usis
+from shogi_arena_agent.checkpoint_self_play_evaluator import CentralPolicyValueEvaluator
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
     MoveSelectionConfig,
@@ -56,6 +57,8 @@ class CheckpointSelfPlayConfig:
     board_backend: str
     checkpoint_id: str | None = None
     move_selection: MoveSelectionConfig | None = None
+    central_evaluator_batch_size_limit: int | None = None
+    central_evaluator_flush_timeout_sec: float = 0.002
     progress_every_plies: int = 0
     start_positions: tuple[StartPosition, ...] = ()
 
@@ -70,7 +73,35 @@ def generate_checkpoint_self_play_games(
     _validate_config(config)
     move_selection = config.move_selection or visit_sampling_move_selection_config(seed=None)
     actor = _checkpoint_self_play_actor(config, move_selection)
-    selector = _checkpoint_self_play_selector(config, move_selection, checkpoint_evaluator_cls=checkpoint_evaluator_cls)
+    checkpoint_evaluator = checkpoint_evaluator_cls.from_checkpoint(config.checkpoint, device=config.device)
+    central_batch_limit = config.central_evaluator_batch_size_limit or config.nn_leaf_eval_batch_limit
+    with CentralPolicyValueEvaluator(
+        checkpoint_evaluator.evaluate_positions,
+        batch_size_limit=central_batch_limit,
+        flush_timeout_sec=config.central_evaluator_flush_timeout_sec,
+    ) as central_evaluator:
+        selector = _checkpoint_self_play_selector(
+            config,
+            move_selection,
+            evaluator=central_evaluator.client(),
+        )
+        return _generate_checkpoint_self_play_games_with_selector(
+            config,
+            actor=actor,
+            selector=selector,
+            record_callback=record_callback,
+            progress_callback=progress_callback,
+        )
+
+
+def _generate_checkpoint_self_play_games_with_selector(
+    config: CheckpointSelfPlayConfig,
+    *,
+    actor: ShogiActorSpec,
+    selector: "_CheckpointSelfPlayMctsExecutor",
+    record_callback: ShogiGameRecordCallback | None,
+    progress_callback: GenerationProgressCallback | None,
+) -> tuple[ShogiGameRecord, ...]:
     games = [
         _ActiveCheckpointSelfPlayGame(
             actor=actor,
@@ -521,9 +552,8 @@ def _checkpoint_self_play_selector(
     config: CheckpointSelfPlayConfig,
     move_selection: MoveSelectionConfig,
     *,
-    checkpoint_evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator],
+    evaluator: PolicyValueEvaluator,
 ) -> "_CheckpointSelfPlayMctsExecutor":
-    evaluator = checkpoint_evaluator_cls.from_checkpoint(config.checkpoint, device=config.device)
     return _CheckpointSelfPlayMctsExecutor(
         evaluator=evaluator,
         config=MctsConfig(
@@ -550,6 +580,9 @@ def _checkpoint_self_play_actor(config: CheckpointSelfPlayConfig, move_selection
             "move_selector": "mcts",
             "mcts_simulations_per_move": config.mcts_simulations,
             "nn_leaf_eval_batch_limit": config.nn_leaf_eval_batch_limit,
+            "central_evaluator_batch_size_limit": config.central_evaluator_batch_size_limit
+            or config.nn_leaf_eval_batch_limit,
+            "central_evaluator_flush_timeout_sec": config.central_evaluator_flush_timeout_sec,
             "move_time_limit_sec": None,
             "root_reuse": False,
             "device": config.device,
@@ -570,6 +603,10 @@ def _validate_config(config: CheckpointSelfPlayConfig) -> None:
         raise ValueError("mcts_simulations must be positive")
     if config.nn_leaf_eval_batch_limit <= 0:
         raise ValueError("nn_leaf_eval_batch_limit must be positive")
+    if config.central_evaluator_batch_size_limit is not None and config.central_evaluator_batch_size_limit <= 0:
+        raise ValueError("central_evaluator_batch_size_limit must be positive")
+    if config.central_evaluator_flush_timeout_sec < 0.0:
+        raise ValueError("central_evaluator_flush_timeout_sec must be non-negative")
     if config.progress_every_plies < 0:
         raise ValueError("progress_every_plies must be non-negative")
     if config.start_positions and len(config.start_positions) != config.games:
