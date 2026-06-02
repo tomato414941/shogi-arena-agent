@@ -69,6 +69,32 @@ class CentralPolicyValueEvaluatorTest(unittest.TestCase):
         self.assertEqual(evaluations[0][0][first_moves[-1]], 1.0)
         self.assertEqual(evaluations[1][0][second_moves[-1]], 1.0)
 
+    def test_propagates_backend_failure_to_waiting_client(self) -> None:
+        def evaluate_positions(_requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+            raise RuntimeError("backend failed")
+
+        board = shogi.Board()
+        legal_moves = tuple(move.usi() for move in board.legal_moves)
+
+        with CentralPolicyValueEvaluator(evaluate_positions, batch_size_limit=8) as central:
+            client = central.client()
+            with self.assertRaisesRegex(RuntimeError, "backend failed"):
+                client.evaluate_batch(((board, legal_moves),))
+            with self.assertRaisesRegex(RuntimeError, "backend failed"):
+                client.evaluate_batch(((board, legal_moves),))
+
+    def test_propagates_backend_shape_failure_to_waiting_client(self) -> None:
+        def evaluate_positions(_requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+            return []
+
+        board = shogi.Board()
+        legal_moves = tuple(move.usi() for move in board.legal_moves)
+
+        with CentralPolicyValueEvaluator(evaluate_positions, batch_size_limit=8) as central:
+            client = central.client()
+            with self.assertRaisesRegex(ValueError, "one evaluation per request"):
+                client.evaluate_batch(((board, legal_moves),))
+
 
 if __name__ == "__main__":
     unittest.main()

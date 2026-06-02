@@ -29,6 +29,13 @@ class EvaluationResult:
     value: float
 
 
+@dataclass(frozen=True)
+class _EvaluationResponse:
+    request_id: int
+    result: PositionEvaluation | None = None
+    error: BaseException | None = None
+
+
 class CentralPolicyValueEvaluator:
     """Batch policy/value requests for one central evaluator backend."""
 
@@ -49,10 +56,11 @@ class CentralPolicyValueEvaluator:
         self.actual_batch_sizes: list[int] = []
         self.model_call_count = 0
         self.model_wall_time_sec = 0.0
-        self._request_queue: queue.Queue[tuple[EvaluationRequest, queue.Queue[EvaluationResult]]] = queue.Queue()
+        self._request_queue: queue.Queue[tuple[EvaluationRequest, queue.Queue[_EvaluationResponse]]] = queue.Queue()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="central-policy-value-evaluator", daemon=True)
         self._started = False
+        self._failure: BaseException | None = None
 
     def __enter__(self) -> CentralPolicyValueEvaluator:
         self.start()
@@ -76,7 +84,7 @@ class CentralPolicyValueEvaluator:
     def client(self) -> "QueuedPolicyValueEvaluator":
         if not self._started:
             raise RuntimeError("central evaluator must be started before creating clients")
-        return QueuedPolicyValueEvaluator(self._request_queue)
+        return QueuedPolicyValueEvaluator(self._request_queue, self._current_failure)
 
     def performance_summary(self) -> dict[str, object]:
         return {
@@ -88,6 +96,9 @@ class CentralPolicyValueEvaluator:
             ),
         }
 
+    def _current_failure(self) -> BaseException | None:
+        return self._failure
+
     def _run(self) -> None:
         while not self._stop.is_set() or not self._request_queue.empty():
             batch = self._read_batch()
@@ -95,18 +106,37 @@ class CentralPolicyValueEvaluator:
                 continue
             requests = tuple(item[0] for item in batch)
             responses = tuple(item[1] for item in batch)
-            started_at = perf_counter()
-            evaluations = self.evaluate_positions(tuple((request.position_sfen, request.legal_moves) for request in requests))
-            elapsed = perf_counter() - started_at
-            self.model_call_count += 1
-            self.model_wall_time_sec += elapsed
-            self.actual_batch_sizes.append(len(requests))
-            if len(evaluations) != len(requests):
-                raise ValueError("central evaluator backend must return one evaluation per request")
-            for request, response_queue, (priors, value) in zip(requests, responses, evaluations, strict=True):
-                response_queue.put(EvaluationResult(request.request_id, priors, float(value)))
+            if self._failure is not None:
+                self._send_error_response(requests, responses, self._failure)
+                continue
+            try:
+                started_at = perf_counter()
+                evaluations = self.evaluate_positions(
+                    tuple((request.position_sfen, request.legal_moves) for request in requests)
+                )
+                elapsed = perf_counter() - started_at
+                self.model_call_count += 1
+                self.model_wall_time_sec += elapsed
+                self.actual_batch_sizes.append(len(requests))
+                if len(evaluations) != len(requests):
+                    raise ValueError("central evaluator backend must return one evaluation per request")
+            except BaseException as error:
+                self._failure = error
+                self._send_error_response(requests, responses, error)
+                continue
+            for request, response_queue, evaluation in zip(requests, responses, evaluations, strict=True):
+                response_queue.put(_EvaluationResponse(request.request_id, result=evaluation))
 
-    def _read_batch(self) -> list[tuple[EvaluationRequest, queue.Queue[EvaluationResult]]]:
+    @staticmethod
+    def _send_error_response(
+        requests: Sequence[EvaluationRequest],
+        responses: Sequence[queue.Queue[_EvaluationResponse]],
+        error: BaseException,
+    ) -> None:
+        for request, response_queue in zip(requests, responses, strict=True):
+            response_queue.put(_EvaluationResponse(request.request_id, error=error))
+
+    def _read_batch(self) -> list[tuple[EvaluationRequest, queue.Queue[_EvaluationResponse]]]:
         try:
             first = self._request_queue.get(timeout=self.flush_timeout_sec if not self._stop.is_set() else 0.0)
         except queue.Empty:
@@ -125,8 +155,13 @@ class CentralPolicyValueEvaluator:
 class QueuedPolicyValueEvaluator:
     """MCTS-side evaluator client that does not own the model backend."""
 
-    def __init__(self, request_queue: queue.Queue[tuple[EvaluationRequest, queue.Queue[EvaluationResult]]]) -> None:
+    def __init__(
+        self,
+        request_queue: queue.Queue[tuple[EvaluationRequest, queue.Queue[_EvaluationResponse]]],
+        failure: Callable[[], BaseException | None],
+    ) -> None:
         self._request_queue = request_queue
+        self._failure = failure
         self._request_ids = itertools.count()
 
     def evaluate_batch(
@@ -135,18 +170,25 @@ class QueuedPolicyValueEvaluator:
     ) -> list[PositionEvaluation]:
         if not requests:
             return []
-        response_queue: queue.Queue[EvaluationResult] = queue.Queue()
+        failure = self._failure()
+        if failure is not None:
+            raise failure
+        response_queue: queue.Queue[_EvaluationResponse] = queue.Queue()
         request_ids: list[int] = []
         for board, legal_moves in requests:
             request_id = next(self._request_ids)
             request_ids.append(request_id)
             self._request_queue.put((EvaluationRequest(request_id, board.sfen(), tuple(legal_moves)), response_queue))
         remaining = set(request_ids)
-        results: dict[int, EvaluationResult] = {}
+        results: dict[int, PositionEvaluation] = {}
         while remaining:
-            result = response_queue.get()
-            if result.request_id not in remaining:
+            response = response_queue.get()
+            if response.request_id not in remaining:
                 continue
-            results[result.request_id] = result
-            remaining.remove(result.request_id)
-        return [(results[request_id].priors, results[request_id].value) for request_id in request_ids]
+            if response.error is not None:
+                raise response.error
+            if response.result is None:
+                raise RuntimeError("central evaluator returned an empty response")
+            results[response.request_id] = response.result
+            remaining.remove(response.request_id)
+        return [(results[request_id][0], float(results[request_id][1])) for request_id in request_ids]
