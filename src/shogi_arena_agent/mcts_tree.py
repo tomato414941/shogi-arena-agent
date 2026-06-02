@@ -88,12 +88,13 @@ def normalize_priors(legal_moves: tuple[str, ...], priors: dict[str, float]) -> 
 
 
 def expanded_children(legal_moves: tuple[str, ...], priors: dict[str, float]) -> dict[str, MctsNode]:
-    prior_values = tuple(max(0.0, float(priors.get(move, 0.0))) for move in legal_moves)
+    prior_values = [max(0.0, float(priors.get(move, 0.0))) for move in legal_moves]
     total = sum(prior_values)
     if total <= 0.0:
         uniform = 1.0 / len(legal_moves)
         return {move: MctsNode(prior=uniform) for move in legal_moves}
-    return {move: MctsNode(prior=prior / total) for move, prior in zip(legal_moves, prior_values, strict=True)}
+    inverse_total = 1.0 / total
+    return {move: MctsNode(prior=prior * inverse_total) for move, prior in zip(legal_moves, prior_values, strict=True)}
 
 
 def visit_count_policy_targets(root: MctsNode) -> dict[str, float]:
@@ -118,8 +119,10 @@ def select_puct_child(node: MctsNode, *, c_puct: float) -> tuple[str, MctsNode] 
     for move, child in node.children.items():
         if child.pending:
             continue
-        exploration = c_puct * child.prior * parent_sqrt / (1 + child.visit_count)
-        score = (-child.value_mean + exploration, move)
+        child_visit_count = child.visit_count
+        child_value_mean = child.value_sum / child_visit_count if child_visit_count else 0.0
+        exploration = c_puct * child.prior * parent_sqrt / (1 + child_visit_count)
+        score = (-child_value_mean + exploration, move)
         if best_score is None or score > best_score:
             best = (move, child)
             best_score = score
