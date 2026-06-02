@@ -71,21 +71,6 @@ class CheckpointSelfPlayGenerationResult:
     central_evaluator_performance: dict[str, object]
 
 
-def generate_checkpoint_self_play_games(
-    config: CheckpointSelfPlayConfig,
-    *,
-    checkpoint_evaluator_cls: type[ShogiMoveChoiceCheckpointEvaluator] = ShogiMoveChoiceCheckpointEvaluator,
-    record_callback: ShogiGameRecordCallback | None = None,
-    progress_callback: GenerationProgressCallback | None = None,
-) -> tuple[ShogiGameRecord, ...]:
-    return run_checkpoint_self_play_generation(
-        config,
-        checkpoint_evaluator_cls=checkpoint_evaluator_cls,
-        record_callback=record_callback,
-        progress_callback=progress_callback,
-    ).records
-
-
 def run_checkpoint_self_play_generation(
     config: CheckpointSelfPlayConfig,
     *,
