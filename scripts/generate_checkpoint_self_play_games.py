@@ -8,7 +8,7 @@ from time import perf_counter
 
 from shogi_arena_agent.checkpoint_self_play_generation import (
     CheckpointSelfPlayConfig,
-    generate_checkpoint_self_play_games,
+    run_checkpoint_self_play_generation,
     summarize_checkpoint_self_play_records,
 )
 from shogi_arena_agent.generated_game_artifacts import GeneratedGameArtifacts
@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--checkpoint-id")
     parser.add_argument("--out", required=True)
     parser.add_argument("--games", type=int, default=2)
+    parser.add_argument("--self-play-worker-threads", type=int, default=1)
     parser.add_argument("--concurrent-games-per-process", type=int, default=1)
     parser.add_argument("--mcts-simulations", type=int, default=128)
     parser.add_argument("--mcts-nn-leaf-eval-batch-limit", type=int, default=64)
@@ -49,6 +50,7 @@ def main(argv: list[str] | None = None) -> None:
         checkpoint=args.checkpoint,
         checkpoint_id=args.checkpoint_id,
         games=args.games,
+        self_play_worker_threads=args.self_play_worker_threads,
         concurrent_games_per_process=args.concurrent_games_per_process,
         max_plies=args.max_plies,
         mcts_simulations=args.mcts_simulations,
@@ -65,18 +67,22 @@ def main(argv: list[str] | None = None) -> None:
         progress_every_plies=args.progress_every_plies,
     )
     with GeneratedGameArtifacts(Path(args.out)) as artifacts:
-        records = generate_checkpoint_self_play_games(
+        result = run_checkpoint_self_play_generation(
             config,
             checkpoint_evaluator_cls=ShogiMoveChoiceCheckpointEvaluator,
             record_callback=artifacts.write_record,
             progress_callback=artifacts.write_progress,
         )
-    print(json.dumps(summarize_checkpoint_self_play_records(records, wall_time_sec=perf_counter() - started_at), indent=2))
+    summary = summarize_checkpoint_self_play_records(result.records, wall_time_sec=perf_counter() - started_at)
+    summary["central_evaluator_performance"] = result.central_evaluator_performance
+    print(json.dumps(summary, indent=2))
 
 
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if args.games <= 0:
         parser.error("--games must be positive")
+    if args.self_play_worker_threads <= 0:
+        parser.error("--self-play-worker-threads must be positive")
     if args.concurrent_games_per_process <= 0:
         parser.error("--concurrent-games-per-process must be positive")
     if args.mcts_simulations <= 0:

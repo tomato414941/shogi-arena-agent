@@ -47,6 +47,8 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
                         "model-entry",
                         "--games",
                         "4",
+                        "--self-play-worker-threads",
+                        "2",
                         "--concurrent-games-per-process",
                         "4",
                         "--mcts-simulations",
@@ -56,7 +58,7 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
                         "--central-evaluator-batch-size-limit",
                         "16",
                         "--central-evaluator-flush-timeout-sec",
-                        "0.0",
+                        "0.05",
                         "--max-plies",
                         "2",
                         "--out",
@@ -75,10 +77,11 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].black_actor.settings["checkpoint"], "model.pt")
         self.assertEqual(records[0].black_actor.settings["checkpoint_id"], "model-entry")
         self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "visit-sampling")
+        self.assertEqual(records[0].black_actor.settings["self_play_worker_threads"], 2)
         self.assertEqual(records[0].black_actor.settings["mcts_simulations_per_move"], 2)
         self.assertEqual(records[0].black_actor.settings["nn_leaf_eval_batch_limit"], 8)
         self.assertEqual(records[0].black_actor.settings["central_evaluator_batch_size_limit"], 16)
-        self.assertEqual(records[0].black_actor.settings["central_evaluator_flush_timeout_sec"], 0.0)
+        self.assertEqual(records[0].black_actor.settings["central_evaluator_flush_timeout_sec"], 0.05)
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry)
         assert records[0].transitions[0].decision_telemetry is not None
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry.search_evidence)
@@ -87,6 +90,9 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertIn("mcts_root_mean_value", records[0].transitions[0].decision_telemetry.search_evidence)
         self.assertEqual(summary["game_count"], 4)
         self.assertIn("multi_position_search_performance", summary)
+        self.assertIn("central_evaluator_performance", summary)
+        self.assertGreater(summary["central_evaluator_performance"]["model_call_count"], 0)
+        self.assertGreaterEqual(summary["central_evaluator_performance"]["actual_nn_leaf_eval_batch_size_max"], 4)
 
 
 def _load_script_module():

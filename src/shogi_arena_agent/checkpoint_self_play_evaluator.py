@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard
+from shogi_arena_agent.mcts_performance import leaf_eval_batch_metrics
 
 PositionEvaluation = tuple[dict[str, float], float]
 PositionEvaluationRequest = tuple[str, tuple[str, ...]]
@@ -76,6 +77,16 @@ class CentralPolicyValueEvaluator:
         if not self._started:
             raise RuntimeError("central evaluator must be started before creating clients")
         return QueuedPolicyValueEvaluator(self._request_queue)
+
+    def performance_summary(self) -> dict[str, object]:
+        return {
+            "model_call_count": self.model_call_count,
+            "model_wall_time_sec": self.model_wall_time_sec,
+            **leaf_eval_batch_metrics(
+                self.actual_batch_sizes,
+                batch_size_limit=self.batch_size_limit,
+            ),
+        }
 
     def _run(self) -> None:
         while not self._stop.is_set() or not self._request_queue.empty():
