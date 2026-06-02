@@ -18,18 +18,7 @@ from shogi_arena_agent.mcts_config import (
 )
 from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator
 from shogi_arena_agent.mcts_performance import MctsMovePerformance, MultiPositionMctsPerformance, leaf_eval_batch_metrics
-from shogi_arena_agent.mcts_tree import (
-    MctsNode,
-    PendingSimulation,
-    SelectedSimulation,
-    expanded_children,
-    position_ply,
-    root_child_visit_counts,
-    root_mean_value,
-    select_final_move_at_ply,
-    select_puct_child,
-    visit_count_policy_targets,
-)
+from shogi_arena_agent.mcts_tree import position_ply
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
 from shogi_arena_agent.shogi_game import (
     ShogiActorSpec,
@@ -245,6 +234,41 @@ class _CheckpointSelfPlayMctsMoveResult:
     performance: MctsMovePerformance
 
 
+@dataclass(slots=True)
+class _SelfPlayMctsChild:
+    move: str
+    node: "_SelfPlayMctsNode"
+
+
+@dataclass(slots=True)
+class _SelfPlayMctsNode:
+    prior: float
+    visit_count: int = 0
+    value_sum: float = 0.0
+    pending: bool = False
+    children: list[_SelfPlayMctsChild] = field(default_factory=list)
+
+    @property
+    def value_mean(self) -> float:
+        if self.visit_count == 0:
+            return 0.0
+        return self.value_sum / self.visit_count
+
+
+@dataclass(frozen=True)
+class _SelfPlaySelectedSimulation:
+    path: list[_SelfPlayMctsNode]
+    board: ShogiBoard
+    node: _SelfPlayMctsNode
+
+
+@dataclass(frozen=True)
+class _SelfPlayPendingSimulation:
+    path: list[_SelfPlayMctsNode]
+    board: ShogiBoard
+    legal_moves: tuple[str, ...]
+
+
 class _CheckpointSelfPlayMctsExecutor:
     """Self-play-only MCTS executor.
 
@@ -301,8 +325,8 @@ class _CheckpointSelfPlayMctsExecutor:
         self,
         active_states: Sequence["_SelfPlayMctsSearchState"],
         search_stats: "_SelfPlayMctsSearchStats",
-    ) -> tuple[list[tuple["_SelfPlayMctsSearchState", PendingSimulation]], bool]:
-        pending: list[tuple[_SelfPlayMctsSearchState, PendingSimulation]] = []
+    ) -> tuple[list[tuple["_SelfPlayMctsSearchState", _SelfPlayPendingSimulation]], bool]:
+        pending: list[tuple[_SelfPlayMctsSearchState, _SelfPlayPendingSimulation]] = []
         made_progress = False
         for state in active_states:
             if state.remaining_simulations <= 0:
@@ -320,7 +344,7 @@ class _CheckpointSelfPlayMctsExecutor:
         self,
         state: "_SelfPlayMctsSearchState",
         search_stats: "_SelfPlayMctsSearchStats",
-    ) -> tuple[PendingSimulation | None, bool]:
+    ) -> tuple[_SelfPlayPendingSimulation | None, bool]:
         board_copy_started_at = perf_counter()
         board = copy_board(state.board)
         self._record_phase_time(state, search_stats, "board_copy", perf_counter() - board_copy_started_at)
@@ -343,13 +367,13 @@ class _CheckpointSelfPlayMctsExecutor:
             return None, True
 
         simulation.node.pending = True
-        return PendingSimulation(path=simulation.path, board=simulation.board, legal_moves=legal_moves), True
+        return _SelfPlayPendingSimulation(path=simulation.path, board=simulation.board, legal_moves=legal_moves), True
 
     def _complete_simulation(
         self,
         state: "_SelfPlayMctsSearchState",
         search_stats: "_SelfPlayMctsSearchStats",
-        path: list[MctsNode],
+        path: list[_SelfPlayMctsNode],
         *,
         value: float,
     ) -> None:
@@ -387,7 +411,7 @@ class _CheckpointSelfPlayMctsExecutor:
 
     def _evaluate_pending(
         self,
-        pending: Sequence[tuple["_SelfPlayMctsSearchState", PendingSimulation]],
+        pending: Sequence[tuple["_SelfPlayMctsSearchState", _SelfPlayPendingSimulation]],
         search_stats: "_SelfPlayMctsSearchStats",
     ) -> None:
         batch_build_started_at = perf_counter()
@@ -420,7 +444,7 @@ class _CheckpointSelfPlayMctsExecutor:
 class _SelfPlayMctsSearchState:
     board: ShogiBoard
     legal_moves: tuple[str, ...]
-    root: MctsNode
+    root: _SelfPlayMctsNode
     started_at: float
     remaining_simulations: int
     ply: int
@@ -453,7 +477,7 @@ class _SelfPlayMctsSearchState:
         state = cls(
             board=board,
             legal_moves=legal_moves,
-            root=MctsNode(prior=1.0),
+            root=_SelfPlayMctsNode(prior=1.0),
             started_at=perf_counter(),
             remaining_simulations=simulation_count,
             ply=position_ply(position),
@@ -487,11 +511,11 @@ class _SelfPlayMctsSearchState:
         if self.move_selection is None:
             raise ValueError("move_selection is required")
         return _CheckpointSelfPlayMctsMoveResult(
-            move=select_final_move_at_ply(self.root, self.ply, self.move_selection, self.rng),
-            policy_targets=visit_count_policy_targets(self.root),
+            move=_select_self_play_final_move_at_ply(self.root, self.ply, self.move_selection, self.rng),
+            policy_targets=_self_play_visit_count_policy_targets(self.root),
             search_evidence={
-                "mcts_root_child_visit_counts": root_child_visit_counts(self.root),
-                "mcts_root_mean_value": root_mean_value(self.root),
+                "mcts_root_child_visit_counts": _self_play_root_child_visit_counts(self.root),
+                "mcts_root_mean_value": self.root.value_mean,
             },
             performance=_mcts_move_performance_since(
                 self.started_at,
@@ -804,28 +828,126 @@ def _emit_progress(payload: dict[str, object], *, progress_callback: GenerationP
     print("progress " + json.dumps(payload, sort_keys=True), file=sys.stderr, flush=True)
 
 
-def _select_pending_simulation(root: MctsNode, board: ShogiBoard, *, c_puct: float) -> SelectedSimulation | None:
+def _select_pending_simulation(
+    root: _SelfPlayMctsNode,
+    board: ShogiBoard,
+    *,
+    c_puct: float,
+) -> _SelfPlaySelectedSimulation | None:
     node = root
     path = [node]
     while node.children:
-        selected = select_puct_child(node, c_puct=c_puct)
+        selected = _select_self_play_puct_child(node, c_puct=c_puct)
         if selected is None:
             return None
-        move, node = selected
+        child = selected
+        move = child.move
+        node = child.node
         board.push_usi(move)
         path.append(node)
-    return SelectedSimulation(path=path, board=board, node=node)
+    return _SelfPlaySelectedSimulation(path=path, board=board, node=node)
 
 
-def _expand_node_with_evaluation(node: MctsNode, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:
-    node.children = expanded_children(legal_moves, priors)
+def _expand_node_with_evaluation(
+    node: _SelfPlayMctsNode,
+    legal_moves: tuple[str, ...],
+    priors: dict[str, float],
+) -> None:
+    prior_values = [max(0.0, float(priors.get(move, 0.0))) for move in legal_moves]
+    total = sum(prior_values)
+    if total <= 0.0:
+        uniform = 1.0 / len(legal_moves)
+        node.children = [_SelfPlayMctsChild(move=move, node=_SelfPlayMctsNode(prior=uniform)) for move in legal_moves]
+        return
+    inverse_total = 1.0 / total
+    node.children = [
+        _SelfPlayMctsChild(move=move, node=_SelfPlayMctsNode(prior=prior * inverse_total))
+        for move, prior in zip(legal_moves, prior_values, strict=True)
+    ]
 
 
-def _backpropagate_path(path: list[MctsNode], value: float) -> None:
+def _backpropagate_path(path: list[_SelfPlayMctsNode], value: float) -> None:
     for visited_node in reversed(path):
         visited_node.visit_count += 1
         visited_node.value_sum += value
         value = -value
+
+
+def _select_self_play_puct_child(
+    node: _SelfPlayMctsNode,
+    *,
+    c_puct: float,
+) -> _SelfPlayMctsChild | None:
+    parent_sqrt = max(1, node.visit_count) ** 0.5
+    best: _SelfPlayMctsChild | None = None
+    best_score: tuple[float, str] | None = None
+    for child in node.children:
+        child_node = child.node
+        if child_node.pending:
+            continue
+        child_visit_count = child_node.visit_count
+        child_value_mean = child_node.value_sum / child_visit_count if child_visit_count else 0.0
+        exploration = c_puct * child_node.prior * parent_sqrt / (1 + child_visit_count)
+        score = (-child_value_mean + exploration, child.move)
+        if best_score is None or score > best_score:
+            best = child
+            best_score = score
+    return best
+
+
+def _select_self_play_final_move_at_ply(
+    root: _SelfPlayMctsNode,
+    ply: int,
+    config: MoveSelectionConfig,
+    rng: random.Random,
+) -> str:
+    if config.mode == "visit_sample":
+        if config.temperature is None or config.temperature_plies is None:
+            raise ValueError("visit_sample selection requires temperature and temperature_plies")
+        if ply < config.temperature_plies:
+            return _sample_self_play_visit_count_move(root, temperature=config.temperature, rng=rng)
+        return _deterministic_self_play_final_move(root)
+    if config.mode == "max_visit":
+        return _deterministic_self_play_final_move(root)
+    raise ValueError(f"unsupported final move selection mode: {config.mode}")
+
+
+def _deterministic_self_play_final_move(root: _SelfPlayMctsNode) -> str:
+    return max(root.children, key=lambda child: (child.node.visit_count, -child.node.value_mean, child.move)).move
+
+
+def _sample_self_play_visit_count_move(root: _SelfPlayMctsNode, *, temperature: float, rng: random.Random) -> str:
+    weights = [max(0, child.node.visit_count) ** (1.0 / temperature) for child in root.children]
+    total = sum(weights)
+    if total <= 0:
+        return rng.choice(root.children).move
+    threshold = rng.random() * total
+    cumulative = 0.0
+    for child, weight in zip(root.children, weights, strict=True):
+        cumulative += weight
+        if cumulative >= threshold:
+            return child.move
+    return root.children[-1].move
+
+
+def _self_play_visit_count_policy_targets(root: _SelfPlayMctsNode) -> dict[str, float]:
+    total = sum(child.node.visit_count for child in root.children)
+    if total <= 0:
+        return _self_play_normalized_priors(root)
+    return {child.move: child.node.visit_count / total for child in root.children}
+
+
+def _self_play_normalized_priors(root: _SelfPlayMctsNode) -> dict[str, float]:
+    total = sum(max(0.0, child.node.prior) for child in root.children)
+    if total <= 0.0:
+        uniform = 1.0 / len(root.children)
+        return {child.move: uniform for child in root.children}
+    inverse_total = 1.0 / total
+    return {child.move: max(0.0, child.node.prior) * inverse_total for child in root.children}
+
+
+def _self_play_root_child_visit_counts(root: _SelfPlayMctsNode) -> dict[str, int]:
+    return {child.move: child.node.visit_count for child in root.children}
 
 
 def _mcts_move_performance_since(
