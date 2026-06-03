@@ -47,7 +47,7 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
                         "model-entry",
                         "--games",
                         "4",
-                        "--self-play-worker-threads",
+                        "--self-play-worker-processes",
                         "2",
                         "--concurrent-games-per-process",
                         "4",
@@ -77,7 +77,7 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertEqual(records[0].black_actor.settings["checkpoint"], "model.pt")
         self.assertEqual(records[0].black_actor.settings["checkpoint_id"], "model-entry")
         self.assertEqual(records[0].black_actor.settings["move_selection_profile"], "visit-sampling")
-        self.assertEqual(records[0].black_actor.settings["self_play_worker_threads"], 2)
+        self.assertEqual(records[0].black_actor.settings["self_play_worker_processes"], 2)
         self.assertEqual(records[0].black_actor.settings["mcts_simulations_per_move"], 2)
         self.assertEqual(records[0].black_actor.settings["nn_leaf_eval_batch_limit"], 8)
         self.assertEqual(records[0].black_actor.settings["central_evaluator_batch_size_limit"], 16)

@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--checkpoint-id")
     parser.add_argument("--out", required=True)
     parser.add_argument("--games", type=int, default=2)
-    parser.add_argument("--self-play-worker-threads", type=int, default=1)
+    parser.add_argument("--self-play-worker-processes", type=int, default=1)
     parser.add_argument("--concurrent-games-per-process", type=int, default=1)
     parser.add_argument("--mcts-simulations", type=int, default=128)
     parser.add_argument("--mcts-nn-leaf-eval-batch-limit", type=int, default=64)
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> None:
         checkpoint=args.checkpoint,
         checkpoint_id=args.checkpoint_id,
         games=args.games,
-        self_play_worker_threads=args.self_play_worker_threads,
+        self_play_worker_processes=args.self_play_worker_processes,
         concurrent_games_per_process=args.concurrent_games_per_process,
         max_plies=args.max_plies,
         mcts_simulations=args.mcts_simulations,
@@ -81,8 +81,8 @@ def main(argv: list[str] | None = None) -> None:
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if args.games <= 0:
         parser.error("--games must be positive")
-    if args.self_play_worker_threads <= 0:
-        parser.error("--self-play-worker-threads must be positive")
+    if args.self_play_worker_processes <= 0:
+        parser.error("--self-play-worker-processes must be positive")
     if args.concurrent_games_per_process <= 0:
         parser.error("--concurrent-games-per-process must be positive")
     if args.mcts_simulations <= 0:

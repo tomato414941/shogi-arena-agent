@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
+import queue
 import random
 import sys
-import threading
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from statistics import mean
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard, board_is_black_turn, board_turn_name, copy_board, legal_move_usis
-from shogi_arena_agent.checkpoint_self_play_evaluator import CentralPolicyValueEvaluator
+from shogi_arena_agent.checkpoint_self_play_evaluator import (
+    CentralPolicyValueEvaluator,
+    ProcessCentralPolicyValueEvaluator,
+    ProcessQueuedPolicyValueEvaluator,
+)
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
     MoveSelectionConfig,
@@ -47,7 +52,7 @@ class CheckpointSelfPlayConfig:
     board_backend: str
     checkpoint_id: str | None = None
     move_selection: MoveSelectionConfig | None = None
-    self_play_worker_threads: int = 1
+    self_play_worker_processes: int = 1
     central_evaluator_batch_size_limit: int | None = None
     central_evaluator_flush_timeout_sec: float = 0.002
     progress_every_plies: int = 0
@@ -58,6 +63,29 @@ class CheckpointSelfPlayConfig:
 class CheckpointSelfPlayGenerationResult:
     records: tuple[ShogiGameRecord, ...]
     central_evaluator_performance: dict[str, object]
+
+
+@dataclass(frozen=True)
+class _WorkerRecordMessage:
+    record_index: int
+    record: ShogiGameRecord
+
+
+@dataclass(frozen=True)
+class _WorkerProgressMessage:
+    worker_id: int
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True)
+class _WorkerCompleteMessage:
+    worker_id: int
+
+
+@dataclass(frozen=True)
+class _WorkerErrorMessage:
+    worker_id: int
+    error_message: str
 
 
 def run_checkpoint_self_play_generation(
@@ -72,97 +100,191 @@ def run_checkpoint_self_play_generation(
     actor = _checkpoint_self_play_actor(config, move_selection)
     checkpoint_evaluator = checkpoint_evaluator_cls.from_checkpoint(config.checkpoint, device=config.device)
     central_batch_limit = config.central_evaluator_batch_size_limit or config.nn_leaf_eval_batch_limit
-    with CentralPolicyValueEvaluator(
-        checkpoint_evaluator.evaluate_positions,
-        batch_size_limit=central_batch_limit,
-        flush_timeout_sec=config.central_evaluator_flush_timeout_sec,
-    ) as central_evaluator:
-        records = _generate_checkpoint_self_play_games_with_central_evaluator(
+    if config.self_play_worker_processes == 1:
+        with CentralPolicyValueEvaluator(
+            checkpoint_evaluator.evaluate_positions,
+            batch_size_limit=central_batch_limit,
+            flush_timeout_sec=config.central_evaluator_flush_timeout_sec,
+        ) as central_evaluator:
+            selector = _checkpoint_self_play_selector(
+                config,
+                move_selection,
+                evaluator=central_evaluator.client(),
+            )
+            records = _generate_checkpoint_self_play_games_with_selector(
+                config,
+                actor=actor,
+                selector=selector,
+                record_callback=record_callback,
+                progress_callback=progress_callback,
+            )
+            central_evaluator_performance = central_evaluator.performance_summary()
+    else:
+        records, central_evaluator_performance = _generate_checkpoint_self_play_games_with_process_workers(
             config,
             actor=actor,
             move_selection=move_selection,
-            central_evaluator=central_evaluator,
+            evaluate_positions=checkpoint_evaluator.evaluate_positions,
             record_callback=record_callback,
             progress_callback=progress_callback,
         )
-        central_evaluator_performance = central_evaluator.performance_summary()
     return CheckpointSelfPlayGenerationResult(
         records=records,
         central_evaluator_performance=central_evaluator_performance,
     )
 
 
-def _generate_checkpoint_self_play_games_with_central_evaluator(
+def _generate_checkpoint_self_play_games_with_process_workers(
     config: CheckpointSelfPlayConfig,
     *,
     actor: ShogiActorSpec,
     move_selection: MoveSelectionConfig,
-    central_evaluator: CentralPolicyValueEvaluator,
+    evaluate_positions: Callable[[Sequence[tuple[str, tuple[str, ...]]]], list[tuple[dict[str, float], float]]],
     record_callback: ShogiGameRecordCallback | None,
     progress_callback: GenerationProgressCallback | None,
-) -> tuple[ShogiGameRecord, ...]:
-    if config.self_play_worker_threads == 1:
-        selector = _checkpoint_self_play_selector(
-            config,
-            move_selection,
-            evaluator=central_evaluator.client(),
-        )
-        return _generate_checkpoint_self_play_games_with_selector(
-            config,
-            actor=actor,
-            selector=selector,
-            record_callback=record_callback,
-            progress_callback=progress_callback,
-        )
-
+) -> tuple[tuple[ShogiGameRecord, ...], dict[str, object]]:
+    context = mp.get_context("spawn")
+    request_queue = context.Queue()
+    event_queue = context.Queue()
     records_by_index: dict[int, ShogiGameRecord] = {}
-    records_lock = threading.Lock()
-    callback_lock = threading.Lock()
-    errors: list[BaseException] = []
-    worker_counts = _worker_game_counts(config.games, config.self_play_worker_threads)
+    response_queues = {worker_id: context.Queue() for worker_id in range(config.self_play_worker_processes)}
+    worker_counts = _worker_game_counts(config.games, config.self_play_worker_processes)
     start_index = 0
-    threads: list[threading.Thread] = []
+    processes: list[mp.Process] = []
+    worker_ids: list[int] = []
     for worker_index, game_count in enumerate(worker_counts):
         if game_count <= 0:
             continue
         worker_start_index = start_index
         start_index += game_count
         worker_config = _worker_config(config, game_count=game_count, start_index=worker_start_index)
+        process = context.Process(
+            target=_run_checkpoint_self_play_worker_process,
+            kwargs={
+                "worker_id": worker_index,
+                "start_index": worker_start_index,
+                "config": worker_config,
+                "actor": actor,
+                "move_selection": _worker_move_selection(move_selection, worker_index),
+                "request_queue": request_queue,
+                "response_queue": response_queues[worker_index],
+                "event_queue": event_queue,
+            },
+            name=f"checkpoint-self-play-worker-{worker_index}",
+        )
+        processes.append(process)
+        worker_ids.append(worker_index)
 
-        def run_worker(
-            *,
-            local_worker_index: int = worker_index,
-            local_start_index: int = worker_start_index,
-            local_config: CheckpointSelfPlayConfig = worker_config,
-        ) -> None:
-            try:
-                selector = _checkpoint_self_play_selector(
-                    local_config,
-                    _worker_move_selection(move_selection, local_worker_index),
-                    evaluator=central_evaluator.client(),
-                )
-                worker_records = _generate_checkpoint_self_play_games_with_selector(
-                    local_config,
-                    actor=actor,
-                    selector=selector,
-                    record_callback=_locked_record_callback(record_callback, callback_lock),
-                    progress_callback=_locked_progress_callback(progress_callback, callback_lock),
-                )
-                with records_lock:
-                    for local_index, record in enumerate(worker_records):
-                        records_by_index[local_start_index + local_index] = record
-            except BaseException as error:
-                with records_lock:
-                    errors.append(error)
+    central_batch_limit = config.central_evaluator_batch_size_limit or config.nn_leaf_eval_batch_limit
+    with ProcessCentralPolicyValueEvaluator(
+        evaluate_positions,
+        request_queue=request_queue,
+        response_queues=response_queues,
+        batch_size_limit=central_batch_limit,
+        flush_timeout_sec=config.central_evaluator_flush_timeout_sec,
+    ) as process_central_evaluator:
+        for process in processes:
+            process.start()
+        _collect_worker_events(
+            event_queue,
+            processes=processes,
+            worker_ids=worker_ids,
+            records_by_index=records_by_index,
+            record_callback=record_callback,
+            progress_callback=progress_callback,
+        )
+        central_evaluator_performance = process_central_evaluator.performance_summary()
+    for process in processes:
+        process.join()
+        if process.exitcode not in (0, None):
+            raise RuntimeError(f"checkpoint self-play worker {process.name} exited with code {process.exitcode}")
+    missing_indexes = [index for index in range(config.games) if index not in records_by_index]
+    if missing_indexes:
+        raise RuntimeError(f"checkpoint self-play workers did not return records for indexes: {missing_indexes}")
+    return tuple(records_by_index[index] for index in range(config.games)), central_evaluator_performance
 
-        thread = threading.Thread(target=run_worker, name=f"checkpoint-self-play-worker-{worker_index}", daemon=True)
-        threads.append(thread)
-        thread.start()
-    for thread in threads:
-        thread.join()
-    if errors:
-        raise errors[0]
-    return tuple(records_by_index[index] for index in range(config.games))
+
+def _run_checkpoint_self_play_worker_process(
+    *,
+    worker_id: int,
+    start_index: int,
+    config: CheckpointSelfPlayConfig,
+    actor: ShogiActorSpec,
+    move_selection: MoveSelectionConfig,
+    request_queue: object,
+    response_queue: object,
+    event_queue: object,
+) -> None:
+    try:
+        selector = _checkpoint_self_play_selector(
+            config,
+            move_selection,
+            evaluator=ProcessQueuedPolicyValueEvaluator(
+                worker_id=worker_id,
+                request_queue=request_queue,
+                response_queue=response_queue,
+            ),
+        )
+        def write_progress(payload: dict[str, object]) -> None:
+            event_queue.put(_WorkerProgressMessage(worker_id, payload))
+
+        records = _generate_checkpoint_self_play_games_with_selector(
+            config,
+            actor=actor,
+            selector=selector,
+            record_callback=None,
+            progress_callback=write_progress,
+        )
+        for local_index, record in enumerate(records):
+            event_queue.put(_WorkerRecordMessage(start_index + local_index, record))
+        event_queue.put(_WorkerCompleteMessage(worker_id))
+    except BaseException as error:
+        event_queue.put(_WorkerErrorMessage(worker_id, str(error)))
+
+
+def _collect_worker_events(
+    event_queue: object,
+    *,
+    processes: Sequence[mp.Process],
+    worker_ids: Sequence[int],
+    records_by_index: dict[int, ShogiGameRecord],
+    record_callback: ShogiGameRecordCallback | None,
+    progress_callback: GenerationProgressCallback | None,
+) -> None:
+    remaining_workers = set(worker_ids)
+    while remaining_workers:
+        try:
+            message = event_queue.get(timeout=0.5)
+        except queue.Empty:
+            exited_workers = [
+                (worker_id, process.exitcode)
+                for worker_id, process in zip(worker_ids, processes, strict=True)
+                if worker_id in remaining_workers and process.exitcode is not None
+            ]
+            if exited_workers and len(exited_workers) == len(remaining_workers):
+                raise RuntimeError(f"checkpoint self-play workers exited before completion: {exited_workers}")
+            for worker_id, exitcode in exited_workers:
+                if exitcode not in (0, None):
+                    raise RuntimeError(f"checkpoint self-play worker {worker_id} exited with code {exitcode}")
+            continue
+        if isinstance(message, _WorkerRecordMessage):
+            records_by_index[message.record_index] = message.record
+            if record_callback is not None:
+                record_callback(message.record)
+            continue
+        if isinstance(message, _WorkerProgressMessage):
+            if progress_callback is not None:
+                progress_callback(message.payload)
+            continue
+        if isinstance(message, _WorkerCompleteMessage):
+            remaining_workers.discard(message.worker_id)
+            continue
+        if isinstance(message, _WorkerErrorMessage):
+            for process in processes:
+                if process.is_alive():
+                    process.terminate()
+            raise RuntimeError(f"checkpoint self-play worker {message.worker_id} failed: {message.error_message}")
+        raise RuntimeError(f"unknown checkpoint self-play worker message: {message!r}")
 
 
 def _generate_checkpoint_self_play_games_with_selector(
@@ -680,7 +802,7 @@ def _checkpoint_self_play_actor(config: CheckpointSelfPlayConfig, move_selection
             "checkpoint": config.checkpoint,
             "checkpoint_id": config.checkpoint_id,
             "checkpoint_path": config.checkpoint,
-            "self_play_worker_threads": config.self_play_worker_threads,
+            "self_play_worker_processes": config.self_play_worker_processes,
             "move_selection_profile": "visit-sampling",
             "move_selection_temperature": move_selection.temperature,
             "move_selection_temperature_plies": move_selection.temperature_plies,
@@ -710,8 +832,8 @@ def _validate_config(config: CheckpointSelfPlayConfig) -> None:
         raise ValueError("mcts_simulations must be positive")
     if config.nn_leaf_eval_batch_limit <= 0:
         raise ValueError("nn_leaf_eval_batch_limit must be positive")
-    if config.self_play_worker_threads <= 0:
-        raise ValueError("self_play_worker_threads must be positive")
+    if config.self_play_worker_processes <= 0:
+        raise ValueError("self_play_worker_processes must be positive")
     if config.central_evaluator_batch_size_limit is not None and config.central_evaluator_batch_size_limit <= 0:
         raise ValueError("central_evaluator_batch_size_limit must be positive")
     if config.central_evaluator_flush_timeout_sec < 0.0:
@@ -722,8 +844,11 @@ def _validate_config(config: CheckpointSelfPlayConfig) -> None:
         raise ValueError("start_positions must be empty or contain one start position per generated game")
 
 
-def _worker_game_counts(games: int, worker_threads: int) -> list[int]:
-    return [games // worker_threads + (1 if index < games % worker_threads else 0) for index in range(worker_threads)]
+def _worker_game_counts(games: int, worker_processes: int) -> list[int]:
+    return [
+        games // worker_processes + (1 if index < games % worker_processes else 0)
+        for index in range(worker_processes)
+    ]
 
 
 def _worker_config(config: CheckpointSelfPlayConfig, *, game_count: int, start_index: int) -> CheckpointSelfPlayConfig:
@@ -741,7 +866,7 @@ def _worker_config(config: CheckpointSelfPlayConfig, *, game_count: int, start_i
         device=config.device,
         board_backend=config.board_backend,
         move_selection=config.move_selection,
-        self_play_worker_threads=1,
+        self_play_worker_processes=1,
         central_evaluator_batch_size_limit=config.central_evaluator_batch_size_limit,
         central_evaluator_flush_timeout_sec=config.central_evaluator_flush_timeout_sec,
         progress_every_plies=config.progress_every_plies,
@@ -758,34 +883,6 @@ def _worker_move_selection(move_selection: MoveSelectionConfig, worker_index: in
         temperature_plies=move_selection.temperature_plies,
         seed=move_selection.seed + worker_index,
     )
-
-
-def _locked_record_callback(
-    callback: ShogiGameRecordCallback | None,
-    lock: threading.Lock,
-) -> ShogiGameRecordCallback | None:
-    if callback is None:
-        return None
-
-    def locked(record: ShogiGameRecord) -> None:
-        with lock:
-            callback(record)
-
-    return locked
-
-
-def _locked_progress_callback(
-    callback: GenerationProgressCallback | None,
-    lock: threading.Lock,
-) -> GenerationProgressCallback | None:
-    if callback is None:
-        return None
-
-    def locked(payload: dict[str, object]) -> None:
-        with lock:
-            callback(payload)
-
-    return locked
 
 
 def _start_position_for_game(config: CheckpointSelfPlayConfig, game_index: int) -> StartPosition | None:
