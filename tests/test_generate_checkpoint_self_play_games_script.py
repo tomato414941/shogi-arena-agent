@@ -9,6 +9,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from shogi_arena_agent.checkpoint_self_play_generation import (
+    CheckpointSelfPlayConfig,
+    run_checkpoint_self_play_generation,
+)
+from shogi_arena_agent.mcts_config import visit_sampling_move_selection_config
 from shogi_arena_agent.shogi_game import load_shogi_game_records_jsonl
 
 
@@ -93,6 +98,67 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertIn("central_evaluator_performance", summary)
         self.assertGreater(summary["central_evaluator_performance"]["model_call_count"], 0)
         self.assertGreaterEqual(summary["central_evaluator_performance"]["actual_nn_leaf_eval_batch_size_max"], 4)
+
+    def test_process_worker_emits_records_as_games_complete(self) -> None:
+        callback_counts: list[int] = []
+
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, _checkpoint: str, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_positions(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _sfen, legal_moves in requests]
+
+        result = run_checkpoint_self_play_generation(
+            CheckpointSelfPlayConfig(
+                checkpoint="model.pt",
+                games=2,
+                self_play_worker_processes=2,
+                concurrent_games_per_process=1,
+                max_plies=1,
+                mcts_simulations=1,
+                nn_leaf_eval_batch_limit=4,
+                central_evaluator_batch_size_limit=4,
+                central_evaluator_flush_timeout_sec=0.05,
+                device="cpu",
+                board_backend="python-shogi",
+                move_selection=visit_sampling_move_selection_config(seed=1),
+            ),
+            checkpoint_evaluator_cls=FakeEvaluator,
+            record_callback=lambda _record: callback_counts.append(len(callback_counts) + 1),
+        )
+
+        self.assertEqual(len(result.records), 2)
+        self.assertEqual(callback_counts, [1, 2])
+
+    def test_process_worker_error_includes_traceback(self) -> None:
+        class FailingEvaluator:
+            @classmethod
+            def from_checkpoint(cls, _checkpoint: str, **_kwargs: object) -> "FailingEvaluator":
+                return cls()
+
+            def evaluate_positions(self, _requests):
+                raise RuntimeError("backend exploded")
+
+        with self.assertRaisesRegex(RuntimeError, "(?s)Traceback.*backend exploded"):
+            run_checkpoint_self_play_generation(
+                CheckpointSelfPlayConfig(
+                    checkpoint="model.pt",
+                    games=1,
+                    self_play_worker_processes=2,
+                    concurrent_games_per_process=1,
+                    max_plies=1,
+                    mcts_simulations=1,
+                    nn_leaf_eval_batch_limit=4,
+                    central_evaluator_batch_size_limit=4,
+                    central_evaluator_flush_timeout_sec=0.05,
+                    device="cpu",
+                    board_backend="python-shogi",
+                    move_selection=visit_sampling_move_selection_config(seed=1),
+                ),
+                checkpoint_evaluator_cls=FailingEvaluator,
+            )
 
 
 def _load_script_module():

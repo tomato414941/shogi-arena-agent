@@ -5,6 +5,7 @@ import multiprocessing as mp
 import queue
 import random
 import sys
+import traceback
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from statistics import mean
@@ -225,21 +226,26 @@ def _run_checkpoint_self_play_worker_process(
                 response_queue=response_queue,
             ),
         )
+        next_record_index = start_index
+
+        def write_record(record: ShogiGameRecord) -> None:
+            nonlocal next_record_index
+            event_queue.put(_WorkerRecordMessage(next_record_index, record))
+            next_record_index += 1
+
         def write_progress(payload: dict[str, object]) -> None:
             event_queue.put(_WorkerProgressMessage(worker_id, payload))
 
-        records = _generate_checkpoint_self_play_games_with_selector(
+        _generate_checkpoint_self_play_games_with_selector(
             config,
             actor=actor,
             selector=selector,
-            record_callback=None,
+            record_callback=write_record,
             progress_callback=write_progress,
         )
-        for local_index, record in enumerate(records):
-            event_queue.put(_WorkerRecordMessage(start_index + local_index, record))
         event_queue.put(_WorkerCompleteMessage(worker_id))
-    except BaseException as error:
-        event_queue.put(_WorkerErrorMessage(worker_id, str(error)))
+    except BaseException:
+        event_queue.put(_WorkerErrorMessage(worker_id, traceback.format_exc()))
 
 
 def _collect_worker_events(
