@@ -21,6 +21,7 @@ class EvaluationRequest:
     request_id: int
     position_sfen: str
     legal_moves: tuple[str, ...]
+    enqueued_at: float
 
 
 @dataclass(frozen=True)
@@ -55,8 +56,12 @@ class CentralPolicyValueEvaluator:
         self.batch_size_limit = batch_size_limit
         self.flush_timeout_sec = flush_timeout_sec
         self.actual_batch_sizes: list[int] = []
+        self.request_queue_wait_seconds: list[float] = []
         self.model_call_count = 0
         self.model_wall_time_sec = 0.0
+        self.batch_first_wait_sec = 0.0
+        self.batch_fill_wait_sec = 0.0
+        self.response_send_wall_time_sec = 0.0
         self._request_queue: queue.Queue[tuple[EvaluationRequest, queue.Queue[_EvaluationResponse]]] = queue.Queue()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="central-policy-value-evaluator", daemon=True)
@@ -89,8 +94,20 @@ class CentralPolicyValueEvaluator:
 
     def performance_summary(self) -> dict[str, object]:
         return {
+            "request_count": sum(self.actual_batch_sizes),
             "model_call_count": self.model_call_count,
             "model_wall_time_sec": self.model_wall_time_sec,
+            "batch_first_wait_sec": self.batch_first_wait_sec,
+            "batch_fill_wait_sec": self.batch_fill_wait_sec,
+            "response_send_wall_time_sec": self.response_send_wall_time_sec,
+            "request_queue_wait_sec_avg": (
+                sum(self.request_queue_wait_seconds) / len(self.request_queue_wait_seconds)
+                if self.request_queue_wait_seconds
+                else 0.0
+            ),
+            "request_queue_wait_sec_max": max(self.request_queue_wait_seconds)
+            if self.request_queue_wait_seconds
+            else 0.0,
             **leaf_eval_batch_metrics(
                 self.actual_batch_sizes,
                 batch_size_limit=self.batch_size_limit,
@@ -111,6 +128,8 @@ class CentralPolicyValueEvaluator:
                 self._send_error_response(requests, responses, self._failure)
                 continue
             try:
+                ready_at = perf_counter()
+                self.request_queue_wait_seconds.extend(ready_at - request.enqueued_at for request in requests)
                 started_at = perf_counter()
                 evaluations = self.evaluate_positions(
                     tuple((request.position_sfen, request.legal_moves) for request in requests)
@@ -125,8 +144,10 @@ class CentralPolicyValueEvaluator:
                 self._failure = error
                 self._send_error_response(requests, responses, error)
                 continue
+            response_started_at = perf_counter()
             for request, response_queue, evaluation in zip(requests, responses, evaluations, strict=True):
                 response_queue.put(_EvaluationResponse(request.request_id, result=evaluation))
+            self.response_send_wall_time_sec += perf_counter() - response_started_at
 
     @staticmethod
     def _send_error_response(
@@ -138,18 +159,23 @@ class CentralPolicyValueEvaluator:
             response_queue.put(_EvaluationResponse(request.request_id, error=error))
 
     def _read_batch(self) -> list[tuple[EvaluationRequest, queue.Queue[_EvaluationResponse]]]:
+        wait_started_at = perf_counter()
         try:
             first = self._request_queue.get(timeout=self.flush_timeout_sec if not self._stop.is_set() else 0.0)
         except queue.Empty:
+            self.batch_first_wait_sec += perf_counter() - wait_started_at
             return []
+        self.batch_first_wait_sec += perf_counter() - wait_started_at
         batch = [first]
         deadline = perf_counter() + self.flush_timeout_sec
+        fill_started_at = perf_counter()
         while len(batch) < self.batch_size_limit:
             timeout = max(0.0, deadline - perf_counter())
             try:
                 batch.append(self._request_queue.get(timeout=timeout))
             except queue.Empty:
                 break
+        self.batch_fill_wait_sec += perf_counter() - fill_started_at
         return batch
 
 
@@ -179,7 +205,9 @@ class QueuedPolicyValueEvaluator:
         for board, legal_moves in requests:
             request_id = next(self._request_ids)
             request_ids.append(request_id)
-            self._request_queue.put((EvaluationRequest(request_id, board.sfen(), tuple(legal_moves)), response_queue))
+            self._request_queue.put(
+                (EvaluationRequest(request_id, board.sfen(), tuple(legal_moves), perf_counter()), response_queue)
+            )
         remaining = set(request_ids)
         results: dict[int, PositionEvaluation] = {}
         while remaining:
@@ -201,6 +229,7 @@ class ProcessEvaluationRequest:
     request_id: int
     position_sfen: str
     legal_moves: tuple[str, ...]
+    enqueued_at: float
 
 
 @dataclass(frozen=True)
@@ -234,8 +263,12 @@ class ProcessCentralPolicyValueEvaluator:
         self.batch_size_limit = batch_size_limit
         self.flush_timeout_sec = flush_timeout_sec
         self.actual_batch_sizes: list[int] = []
+        self.request_queue_wait_seconds: list[float] = []
         self.model_call_count = 0
         self.model_wall_time_sec = 0.0
+        self.batch_first_wait_sec = 0.0
+        self.batch_fill_wait_sec = 0.0
+        self.response_send_wall_time_sec = 0.0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="process-central-policy-value-evaluator", daemon=True)
         self._started = False
@@ -262,8 +295,20 @@ class ProcessCentralPolicyValueEvaluator:
 
     def performance_summary(self) -> dict[str, object]:
         return {
+            "request_count": sum(self.actual_batch_sizes),
             "model_call_count": self.model_call_count,
             "model_wall_time_sec": self.model_wall_time_sec,
+            "batch_first_wait_sec": self.batch_first_wait_sec,
+            "batch_fill_wait_sec": self.batch_fill_wait_sec,
+            "response_send_wall_time_sec": self.response_send_wall_time_sec,
+            "request_queue_wait_sec_avg": (
+                sum(self.request_queue_wait_seconds) / len(self.request_queue_wait_seconds)
+                if self.request_queue_wait_seconds
+                else 0.0
+            ),
+            "request_queue_wait_sec_max": max(self.request_queue_wait_seconds)
+            if self.request_queue_wait_seconds
+            else 0.0,
             **leaf_eval_batch_metrics(
                 self.actual_batch_sizes,
                 batch_size_limit=self.batch_size_limit,
@@ -279,6 +324,8 @@ class ProcessCentralPolicyValueEvaluator:
                 self._send_error_response(batch, self._failure_message)
                 continue
             try:
+                ready_at = perf_counter()
+                self.request_queue_wait_seconds.extend(ready_at - request.enqueued_at for request in batch)
                 started_at = perf_counter()
                 evaluations = self.evaluate_positions(
                     tuple((request.position_sfen, request.legal_moves) for request in batch)
@@ -293,10 +340,12 @@ class ProcessCentralPolicyValueEvaluator:
                 self._failure_message = str(error)
                 self._send_error_response(batch, self._failure_message)
                 continue
+            response_started_at = perf_counter()
             for request, evaluation in zip(batch, evaluations, strict=True):
                 self.response_queues[request.worker_id].put(
                     ProcessEvaluationResponse(request.request_id, result=evaluation)
                 )
+            self.response_send_wall_time_sec += perf_counter() - response_started_at
 
     def _send_error_response(self, requests: Sequence[ProcessEvaluationRequest], error_message: str) -> None:
         for request in requests:
@@ -305,18 +354,23 @@ class ProcessCentralPolicyValueEvaluator:
             )
 
     def _read_batch(self) -> list[ProcessEvaluationRequest]:
+        wait_started_at = perf_counter()
         try:
             first = self.request_queue.get(timeout=self.flush_timeout_sec if not self._stop.is_set() else 0.0)
         except queue.Empty:
+            self.batch_first_wait_sec += perf_counter() - wait_started_at
             return []
+        self.batch_first_wait_sec += perf_counter() - wait_started_at
         batch = [first]
         deadline = perf_counter() + self.flush_timeout_sec
+        fill_started_at = perf_counter()
         while len(batch) < self.batch_size_limit:
             timeout = max(0.0, deadline - perf_counter())
             try:
                 batch.append(self.request_queue.get(timeout=timeout))
             except queue.Empty:
                 break
+        self.batch_fill_wait_sec += perf_counter() - fill_started_at
         return batch
 
 
@@ -351,6 +405,7 @@ class ProcessQueuedPolicyValueEvaluator:
                     request_id=request_id,
                     position_sfen=board.sfen(),
                     legal_moves=tuple(legal_moves),
+                    enqueued_at=perf_counter(),
                 )
             )
         remaining = set(request_ids)
