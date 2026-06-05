@@ -59,6 +59,7 @@ class CentralPolicyValueEvaluator:
         self.request_queue_wait_seconds: list[float] = []
         self.model_call_count = 0
         self.model_wall_time_sec = 0.0
+        self.backend_performance_seconds: dict[str, float] = {}
         self.batch_first_wait_sec = 0.0
         self.batch_fill_wait_sec = 0.0
         self.response_send_wall_time_sec = 0.0
@@ -97,6 +98,10 @@ class CentralPolicyValueEvaluator:
             "request_count": sum(self.actual_batch_sizes),
             "model_call_count": self.model_call_count,
             "model_wall_time_sec": self.model_wall_time_sec,
+            **{
+                f"backend_{key}": value
+                for key, value in sorted(self.backend_performance_seconds.items())
+            },
             "batch_first_wait_sec": self.batch_first_wait_sec,
             "batch_fill_wait_sec": self.batch_fill_wait_sec,
             "response_send_wall_time_sec": self.response_send_wall_time_sec,
@@ -131,12 +136,14 @@ class CentralPolicyValueEvaluator:
                 ready_at = perf_counter()
                 self.request_queue_wait_seconds.extend(ready_at - request.enqueued_at for request in requests)
                 started_at = perf_counter()
-                evaluations = self.evaluate_positions(
-                    tuple((request.position_sfen, request.legal_moves) for request in requests)
+                evaluations = _evaluate_positions_backend(
+                    self.evaluate_positions,
+                    tuple((request.position_sfen, request.legal_moves) for request in requests),
                 )
                 elapsed = perf_counter() - started_at
                 self.model_call_count += 1
                 self.model_wall_time_sec += elapsed
+                _add_backend_performance(self.backend_performance_seconds, self.evaluate_positions)
                 self.actual_batch_sizes.append(len(requests))
                 if len(evaluations) != len(requests):
                     raise ValueError("central evaluator backend must return one evaluation per request")
@@ -266,6 +273,7 @@ class ProcessCentralPolicyValueEvaluator:
         self.request_queue_wait_seconds: list[float] = []
         self.model_call_count = 0
         self.model_wall_time_sec = 0.0
+        self.backend_performance_seconds: dict[str, float] = {}
         self.batch_first_wait_sec = 0.0
         self.batch_fill_wait_sec = 0.0
         self.response_send_wall_time_sec = 0.0
@@ -298,6 +306,10 @@ class ProcessCentralPolicyValueEvaluator:
             "request_count": sum(self.actual_batch_sizes),
             "model_call_count": self.model_call_count,
             "model_wall_time_sec": self.model_wall_time_sec,
+            **{
+                f"backend_{key}": value
+                for key, value in sorted(self.backend_performance_seconds.items())
+            },
             "batch_first_wait_sec": self.batch_first_wait_sec,
             "batch_fill_wait_sec": self.batch_fill_wait_sec,
             "response_send_wall_time_sec": self.response_send_wall_time_sec,
@@ -327,12 +339,14 @@ class ProcessCentralPolicyValueEvaluator:
                 ready_at = perf_counter()
                 self.request_queue_wait_seconds.extend(ready_at - request.enqueued_at for request in batch)
                 started_at = perf_counter()
-                evaluations = self.evaluate_positions(
-                    tuple((request.position_sfen, request.legal_moves) for request in batch)
+                evaluations = _evaluate_positions_backend(
+                    self.evaluate_positions,
+                    tuple((request.position_sfen, request.legal_moves) for request in batch),
                 )
                 elapsed = perf_counter() - started_at
                 self.model_call_count += 1
                 self.model_wall_time_sec += elapsed
+                _add_backend_performance(self.backend_performance_seconds, self.evaluate_positions)
                 self.actual_batch_sizes.append(len(batch))
                 if len(evaluations) != len(batch):
                     raise ValueError("central evaluator backend must return one evaluation per request")
@@ -421,3 +435,28 @@ class ProcessQueuedPolicyValueEvaluator:
             results[response.request_id] = response.result
             remaining.remove(response.request_id)
         return [(results[request_id][0], float(results[request_id][1])) for request_id in request_ids]
+
+
+def _evaluate_positions_backend(
+    backend: object,
+    requests: Sequence[PositionEvaluationRequest],
+) -> list[PositionEvaluation]:
+    if hasattr(backend, "evaluate_positions"):
+        return backend.evaluate_positions(requests)  # type: ignore[union-attr]
+    if hasattr(backend, "evaluate_batch"):
+        return backend.evaluate_batch(requests)  # type: ignore[union-attr]
+    if callable(backend):
+        return backend(requests)
+    raise TypeError("central evaluator backend must be callable or expose evaluate_batch/evaluate_positions")
+
+
+def _add_backend_performance(target: dict[str, float], evaluate_positions: object) -> None:
+    performance = getattr(evaluate_positions, "last_performance", None)
+    if not isinstance(performance, Mapping):
+        return
+    for key, value in performance.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if key == "request_count":
+            continue
+        target[key] = target.get(key, 0.0) + float(value)

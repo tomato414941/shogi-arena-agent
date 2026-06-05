@@ -14,9 +14,11 @@ from shogi_arena_agent.checkpoint_self_play_evaluator import (
 class RecordingPositionEvaluator:
     def __init__(self) -> None:
         self.batch_sizes: list[int] = []
+        self.last_performance: dict[str, float] = {}
 
     def __call__(self, requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
         self.batch_sizes.append(len(requests))
+        self.last_performance = {"model_forward_sec": 0.5, "output_decode_sec": 0.25}
         return [({move: 1.0 for move in legal_moves}, 0.25) for _sfen, legal_moves in requests]
 
 
@@ -43,6 +45,9 @@ class CentralPolicyValueEvaluatorTest(unittest.TestCase):
 
             self.assertEqual(central.model_call_count, 1)
             self.assertEqual(central.actual_batch_sizes, [2])
+            performance = central.performance_summary()
+            self.assertEqual(performance["backend_model_forward_sec"], 0.5)
+            self.assertEqual(performance["backend_output_decode_sec"], 0.25)
 
         self.assertEqual(backend.batch_sizes, [2])
         self.assertEqual(len(results), 2)

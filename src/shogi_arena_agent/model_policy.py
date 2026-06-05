@@ -67,13 +67,14 @@ class ShogiMoveChoiceCheckpointEvaluator:
             ) from error
 
         evaluator = ShogiPolicyValueCheckpointEvaluator.from_checkpoint(checkpoint_path, device=device)
-        return cls(evaluator.evaluate_batch)
+        return cls(evaluator)
 
     def __init__(
         self,
-        evaluate_positions: Callable[[Sequence[PositionEvaluationRequest]], list[PositionEvaluation]],
+        evaluate_positions: Callable[[Sequence[PositionEvaluationRequest]], list[PositionEvaluation]] | object,
     ) -> None:
-        self.evaluate_positions = evaluate_positions
+        self._backend = evaluate_positions
+        self.last_performance: dict[str, float] = {}
 
     def evaluate(self, board: ShogiBoard, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
         return self.evaluate_batch(((board, legal_moves),))[0]
@@ -81,3 +82,16 @@ class ShogiMoveChoiceCheckpointEvaluator:
     def evaluate_batch(self, requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]]) -> list[PositionEvaluation]:
         position_requests = [(board.sfen(), legal_moves) for board, legal_moves in requests]
         return self.evaluate_positions(position_requests)
+
+    def __call__(self, requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+        return self.evaluate_positions(requests)
+
+    def evaluate_positions(self, requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+        if hasattr(self._backend, "evaluate_batch"):
+            evaluations = self._backend.evaluate_batch(requests)  # type: ignore[union-attr]
+        elif callable(self._backend):
+            evaluations = self._backend(requests)
+        else:
+            raise TypeError("checkpoint evaluator backend must be callable or expose evaluate_batch")
+        self.last_performance = dict(getattr(self._backend, "last_performance", {}))
+        return evaluations

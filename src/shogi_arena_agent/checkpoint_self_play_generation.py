@@ -103,7 +103,7 @@ def run_checkpoint_self_play_generation(
     central_batch_limit = config.central_evaluator_batch_size_limit or config.nn_leaf_eval_batch_limit
     if config.self_play_worker_processes == 1:
         with CentralPolicyValueEvaluator(
-            checkpoint_evaluator.evaluate_positions,
+            checkpoint_evaluator,
             batch_size_limit=central_batch_limit,
             flush_timeout_sec=config.central_evaluator_flush_timeout_sec,
         ) as central_evaluator:
@@ -125,7 +125,7 @@ def run_checkpoint_self_play_generation(
             config,
             actor=actor,
             move_selection=move_selection,
-            evaluate_positions=checkpoint_evaluator.evaluate_positions,
+            evaluate_positions=checkpoint_evaluator,
             record_callback=record_callback,
             progress_callback=progress_callback,
         )
