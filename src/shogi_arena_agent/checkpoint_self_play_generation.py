@@ -455,16 +455,24 @@ class _CheckpointSelfPlayMctsExecutor:
         search_stats: "_SelfPlayMctsSearchStats",
     ) -> tuple[list[tuple["_SelfPlayMctsSearchState", _SelfPlayPendingSimulation]], bool]:
         pending: list[tuple[_SelfPlayMctsSearchState, _SelfPlayPendingSimulation]] = []
+        selected_count_by_state_id: dict[int, int] = {}
         made_progress = False
-        for state in active_states:
-            if state.remaining_simulations <= 0:
-                continue
-            simulation, progressed = self._select_leaf_for_evaluation(state, search_stats)
-            made_progress = made_progress or progressed
-            if simulation is None:
-                continue
-            pending.append((state, simulation))
-            if len(pending) >= self.config.nn_leaf_eval_batch_limit:
+        while len(pending) < self.config.nn_leaf_eval_batch_limit:
+            round_made_progress = False
+            for state in active_states:
+                state_id = id(state)
+                if selected_count_by_state_id.get(state_id, 0) >= state.remaining_simulations:
+                    continue
+                simulation, progressed = self._select_leaf_for_evaluation(state, search_stats)
+                made_progress = made_progress or progressed
+                round_made_progress = round_made_progress or progressed
+                if simulation is None:
+                    continue
+                selected_count_by_state_id[state_id] = selected_count_by_state_id.get(state_id, 0) + 1
+                pending.append((state, simulation))
+                if len(pending) >= self.config.nn_leaf_eval_batch_limit:
+                    break
+            if not round_made_progress:
                 break
         return pending, made_progress
 
@@ -481,7 +489,8 @@ class _CheckpointSelfPlayMctsExecutor:
         simulation = _select_pending_simulation(state.root, board, c_puct=self.config.c_puct)
         self._record_phase_time(state, search_stats, "selection", perf_counter() - selection_started_at)
         if simulation is None:
-            state.remaining_simulations = 0
+            if not _self_play_node_has_pending_descendant(state.root):
+                state.remaining_simulations = 0
             return None, False
         if simulation.board.is_game_over():
             self._complete_simulation(state, search_stats, simulation.path, value=-1.0)
@@ -546,7 +555,7 @@ class _CheckpointSelfPlayMctsExecutor:
         requests = tuple((simulation.board, simulation.legal_moves) for _state, simulation in pending)
         batch_build_elapsed = perf_counter() - batch_build_started_at
         search_stats.add_phase_time("batch_build", batch_build_elapsed)
-        for state, _simulation in pending:
+        for state in _unique_pending_states(pending):
             state.add_phase_time("batch_build", batch_build_elapsed)
 
         started_at = perf_counter()
@@ -557,15 +566,19 @@ class _CheckpointSelfPlayMctsExecutor:
         search_stats.add_leaf_eval_batch_size(len(pending))
         if len(evaluations) != len(pending):
             raise ValueError("batch evaluator must return one evaluation per request")
+        updated_state_ids: set[int] = set()
         for (state, simulation), (priors, value) in zip(pending, evaluations, strict=True):
-            state.leaf_eval_batch_sizes.append(len(pending))
+            state_id = id(state)
+            if state_id not in updated_state_ids:
+                state.leaf_eval_batch_sizes.append(len(pending))
+                state.model_call_count += 1
+                state.model_wall_time_sec += elapsed
+                updated_state_ids.add(state_id)
             simulation.path[-1].pending = False
             expand_started_at = perf_counter()
             _expand_node_with_evaluation(simulation.path[-1], simulation.legal_moves, priors)
             self._record_phase_time(state, search_stats, "expand", perf_counter() - expand_started_at)
             self._complete_simulation(state, search_stats, simulation.path, value=max(-1.0, min(1.0, float(value))))
-            state.model_call_count += 1
-            state.model_wall_time_sec += elapsed
 
 
 @dataclass
@@ -996,6 +1009,26 @@ def _select_self_play_puct_child(
             best = child
             best_score = score
     return best
+
+
+def _self_play_node_has_pending_descendant(node: _SelfPlayMctsNode) -> bool:
+    if node.pending:
+        return True
+    return any(_self_play_node_has_pending_descendant(child.node) for child in node.children)
+
+
+def _unique_pending_states(
+    pending: Sequence[tuple["_SelfPlayMctsSearchState", _SelfPlayPendingSimulation]],
+) -> tuple["_SelfPlayMctsSearchState", ...]:
+    states: list[_SelfPlayMctsSearchState] = []
+    seen_state_ids: set[int] = set()
+    for state, _simulation in pending:
+        state_id = id(state)
+        if state_id in seen_state_ids:
+            continue
+        seen_state_ids.add(state_id)
+        states.append(state)
+    return tuple(states)
 
 
 def _select_self_play_final_move_at_ply(

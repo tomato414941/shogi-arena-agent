@@ -132,6 +132,43 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(result.records), 2)
         self.assertEqual(callback_counts, [1, 2])
 
+    def test_single_game_self_play_batches_multiple_leaf_evaluations(self) -> None:
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, _checkpoint: str, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_positions(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _sfen, legal_moves in requests]
+
+        result = run_checkpoint_self_play_generation(
+            CheckpointSelfPlayConfig(
+                checkpoint="model.pt",
+                games=1,
+                self_play_worker_processes=1,
+                concurrent_games_per_process=1,
+                max_plies=1,
+                mcts_simulations=8,
+                nn_leaf_eval_batch_limit=8,
+                central_evaluator_batch_size_limit=8,
+                central_evaluator_flush_timeout_sec=0.05,
+                device="cpu",
+                board_backend="python-shogi",
+                move_selection=visit_sampling_move_selection_config(seed=1),
+            ),
+            checkpoint_evaluator_cls=FakeEvaluator,
+        )
+
+        performance = result.central_evaluator_performance
+        self.assertGreaterEqual(performance["actual_nn_leaf_eval_batch_size_max"], 8)
+        telemetry = result.records[0].transitions[0].decision_telemetry
+        self.assertIsNotNone(telemetry)
+        assert telemetry is not None
+        self.assertIsNotNone(telemetry.move_performance)
+        assert telemetry.move_performance is not None
+        self.assertEqual(telemetry.move_performance["model_call_count"], 2)
+        self.assertEqual(telemetry.move_performance["actual_nn_leaf_eval_batch_size_max"], 8)
+
     def test_process_worker_error_includes_traceback(self) -> None:
         class FailingEvaluator:
             @classmethod
