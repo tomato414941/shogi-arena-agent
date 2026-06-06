@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--central-evaluator-batch-size-limit", type=int)
     parser.add_argument("--central-evaluator-flush-timeout-sec", type=float, default=0.002)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--inference-precision", choices=("fp32", "bf16"), default="fp32")
+    parser.add_argument("--compile-model", action="store_true")
     parser.add_argument("--board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-selection-temperature", type=float, default=DEFAULT_MOVE_SELECTION_TEMPERATURE)
@@ -58,6 +60,8 @@ def main(argv: list[str] | None = None) -> None:
         central_evaluator_batch_size_limit=args.central_evaluator_batch_size_limit,
         central_evaluator_flush_timeout_sec=args.central_evaluator_flush_timeout_sec,
         device=args.device,
+        inference_precision=args.inference_precision,
+        compile_model=args.compile_model,
         board_backend=args.board_backend,
         move_selection=visit_sampling_move_selection_config(
             seed=args.seed,

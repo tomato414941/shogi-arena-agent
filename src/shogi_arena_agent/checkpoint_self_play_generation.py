@@ -52,6 +52,8 @@ class CheckpointSelfPlayConfig:
     device: str
     board_backend: str
     checkpoint_id: str | None = None
+    inference_precision: str = "fp32"
+    compile_model: bool = False
     move_selection: MoveSelectionConfig | None = None
     self_play_worker_processes: int = 1
     central_evaluator_batch_size_limit: int | None = None
@@ -99,7 +101,12 @@ def run_checkpoint_self_play_generation(
     _validate_config(config)
     move_selection = config.move_selection or visit_sampling_move_selection_config(seed=None)
     actor = _checkpoint_self_play_actor(config, move_selection)
-    checkpoint_evaluator = checkpoint_evaluator_cls.from_checkpoint(config.checkpoint, device=config.device)
+    checkpoint_evaluator = checkpoint_evaluator_cls.from_checkpoint(
+        config.checkpoint,
+        device=config.device,
+        precision=config.inference_precision,
+        compile_model=config.compile_model,
+    )
     central_batch_limit = config.central_evaluator_batch_size_limit or config.nn_leaf_eval_batch_limit
     if config.self_play_worker_processes == 1:
         with CentralPolicyValueEvaluator(
@@ -834,6 +841,8 @@ def _checkpoint_self_play_actor(config: CheckpointSelfPlayConfig, move_selection
             "move_time_limit_sec": None,
             "root_reuse": False,
             "device": config.device,
+            "inference_precision": config.inference_precision,
+            "compile_model": config.compile_model,
             "concurrent_games_per_process": config.concurrent_games_per_process,
             "board_backend": config.board_backend,
         },
@@ -857,6 +866,8 @@ def _validate_config(config: CheckpointSelfPlayConfig) -> None:
         raise ValueError("central_evaluator_batch_size_limit must be positive")
     if config.central_evaluator_flush_timeout_sec < 0.0:
         raise ValueError("central_evaluator_flush_timeout_sec must be non-negative")
+    if config.inference_precision not in {"fp32", "bf16"}:
+        raise ValueError("inference_precision must be fp32 or bf16")
     if config.progress_every_plies < 0:
         raise ValueError("progress_every_plies must be non-negative")
     if config.start_positions and len(config.start_positions) != config.games:
@@ -885,6 +896,8 @@ def _worker_config(config: CheckpointSelfPlayConfig, *, game_count: int, start_i
         device=config.device,
         board_backend=config.board_backend,
         move_selection=config.move_selection,
+        inference_precision=config.inference_precision,
+        compile_model=config.compile_model,
         self_play_worker_processes=1,
         central_evaluator_batch_size_limit=config.central_evaluator_batch_size_limit,
         central_evaluator_flush_timeout_sec=config.central_evaluator_flush_timeout_sec,

@@ -52,13 +52,30 @@ class ShogiMoveChoiceCheckpointPolicy(DirectMovePolicy):
         *,
         device: str = "cpu",
         board_backend: str = "python-shogi",
+        precision: str = "fp32",
+        compile_model: bool = False,
     ) -> ShogiMoveChoiceCheckpointPolicy:
-        return cls(ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(checkpoint_path, device=device), board_backend=board_backend)
+        return cls(
+            ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(
+                checkpoint_path,
+                device=device,
+                precision=precision,
+                compile_model=compile_model,
+            ),
+            board_backend=board_backend,
+        )
 
 
 class ShogiMoveChoiceCheckpointEvaluator:
     @classmethod
-    def from_checkpoint(cls, checkpoint_path: str | Path, *, device: str = "cpu") -> ShogiMoveChoiceCheckpointEvaluator:
+    def from_checkpoint(
+        cls,
+        checkpoint_path: str | Path,
+        *,
+        device: str = "cpu",
+        precision: str = "fp32",
+        compile_model: bool = False,
+    ) -> ShogiMoveChoiceCheckpointEvaluator:
         try:
             from intrep.problems.shogi_policy_value.inference import ShogiPolicyValueCheckpointEvaluator
         except ImportError as error:
@@ -66,7 +83,12 @@ class ShogiMoveChoiceCheckpointEvaluator:
                 "intelligence-representation and torch are required to use shogi move choice checkpoints"
             ) from error
 
-        evaluator = ShogiPolicyValueCheckpointEvaluator.from_checkpoint(checkpoint_path, device=device)
+        evaluator = ShogiPolicyValueCheckpointEvaluator.from_checkpoint(
+            checkpoint_path,
+            device=device,
+            precision=precision,
+            compile_model=compile_model,
+        )
         return cls(evaluator)
 
     def __init__(
