@@ -18,6 +18,8 @@ from shogi_arena_agent.usi import BOARD_BACKENDS
 
 STANDARD_MAX_PLIES = 320
 DEFAULT_MAX_PLIES = 320
+DEFAULT_MCTS_SIMULATIONS = 64
+DEFAULT_MCTS_MAX_EXPANDED_CHILDREN = 32
 DEFAULT_MOVE_SELECTION_TEMPERATURE = 1.0
 DEFAULT_MOVE_SELECTION_TEMPERATURE_PLIES = 40
 
@@ -30,12 +32,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--self-play-worker-processes", type=int, default=1)
     parser.add_argument("--concurrent-games-per-process", type=int, default=1)
-    parser.add_argument("--mcts-simulations", type=int, default=128)
+    parser.add_argument("--mcts-simulations", type=int, default=DEFAULT_MCTS_SIMULATIONS)
     parser.add_argument("--mcts-nn-leaf-eval-batch-limit", type=int, default=64)
     parser.add_argument("--central-evaluator-batch-size-limit", type=int)
     parser.add_argument("--central-evaluator-flush-timeout-sec", type=float, default=0.002)
+    parser.add_argument("--mcts-max-expanded-children", type=int, default=DEFAULT_MCTS_MAX_EXPANDED_CHILDREN)
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--inference-precision", choices=("fp32", "bf16"), default="fp32")
+    parser.add_argument("--inference-precision", choices=("fp32", "bf16"), default="bf16")
     parser.add_argument("--compile-model", action="store_true")
     parser.add_argument("--board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     parser.add_argument("--seed", type=int)
@@ -59,6 +62,7 @@ def main(argv: list[str] | None = None) -> None:
         nn_leaf_eval_batch_limit=args.mcts_nn_leaf_eval_batch_limit,
         central_evaluator_batch_size_limit=args.central_evaluator_batch_size_limit,
         central_evaluator_flush_timeout_sec=args.central_evaluator_flush_timeout_sec,
+        max_expanded_children=args.mcts_max_expanded_children,
         device=args.device,
         inference_precision=args.inference_precision,
         compile_model=args.compile_model,
@@ -97,6 +101,8 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error("--central-evaluator-batch-size-limit must be positive")
     if args.central_evaluator_flush_timeout_sec < 0.0:
         parser.error("--central-evaluator-flush-timeout-sec must be non-negative")
+    if args.mcts_max_expanded_children is not None and args.mcts_max_expanded_children <= 0:
+        parser.error("--mcts-max-expanded-children must be positive")
     if args.progress_every_plies < 0:
         parser.error("--progress-every-plies must be non-negative")
     if args.max_plies <= 0:

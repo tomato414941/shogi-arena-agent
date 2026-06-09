@@ -58,6 +58,7 @@ class CheckpointSelfPlayConfig:
     self_play_worker_processes: int = 1
     central_evaluator_batch_size_limit: int | None = None
     central_evaluator_flush_timeout_sec: float = 0.002
+    max_expanded_children: int | None = None
     progress_every_plies: int = 0
     start_positions: tuple[StartPosition, ...] = ()
 
@@ -106,6 +107,7 @@ def run_checkpoint_self_play_generation(
         device=config.device,
         precision=config.inference_precision,
         compile_model=config.compile_model,
+        max_prior_count=config.max_expanded_children,
     )
     central_batch_limit = config.central_evaluator_batch_size_limit or config.nn_leaf_eval_batch_limit
     if config.self_play_worker_processes == 1:
@@ -418,10 +420,12 @@ class _CheckpointSelfPlayMctsExecutor:
         *,
         config: MctsConfig,
         move_selection: MoveSelectionConfig,
+        max_expanded_children: int | None,
     ) -> None:
         self.evaluator = evaluator
         self.config = config
         self.move_selection = move_selection
+        self.max_expanded_children = max_expanded_children
         self._rng = random.Random(self.move_selection.seed)
         self.last_multi_position_search_performance: MultiPositionMctsPerformance | None = None
 
@@ -548,7 +552,12 @@ class _CheckpointSelfPlayMctsExecutor:
             raise ValueError("batch evaluator must return one evaluation per request")
         for state, (priors, _value) in zip(states, evaluations, strict=True):
             expand_started_at = perf_counter()
-            _expand_node_with_evaluation(state.root, state.legal_moves, priors)
+            _expand_node_with_evaluation(
+                state.root,
+                state.legal_moves,
+                priors,
+                max_children=self.max_expanded_children,
+            )
             self._record_phase_time(state, search_stats, "expand", perf_counter() - expand_started_at)
             state.model_call_count += 1
             state.model_wall_time_sec += elapsed
@@ -583,7 +592,12 @@ class _CheckpointSelfPlayMctsExecutor:
                 updated_state_ids.add(state_id)
             simulation.path[-1].pending = False
             expand_started_at = perf_counter()
-            _expand_node_with_evaluation(simulation.path[-1], simulation.legal_moves, priors)
+            _expand_node_with_evaluation(
+                simulation.path[-1],
+                simulation.legal_moves,
+                priors,
+                max_children=self.max_expanded_children,
+            )
             self._record_phase_time(state, search_stats, "expand", perf_counter() - expand_started_at)
             self._complete_simulation(state, search_stats, simulation.path, value=max(-1.0, min(1.0, float(value))))
 
@@ -817,6 +831,7 @@ def _checkpoint_self_play_selector(
             root_reuse=False,
         ),
         move_selection=move_selection,
+        max_expanded_children=config.max_expanded_children,
     )
 
 
@@ -838,6 +853,7 @@ def _checkpoint_self_play_actor(config: CheckpointSelfPlayConfig, move_selection
             "central_evaluator_batch_size_limit": config.central_evaluator_batch_size_limit
             or config.nn_leaf_eval_batch_limit,
             "central_evaluator_flush_timeout_sec": config.central_evaluator_flush_timeout_sec,
+            "max_expanded_children": config.max_expanded_children,
             "move_time_limit_sec": None,
             "root_reuse": False,
             "device": config.device,
@@ -866,6 +882,8 @@ def _validate_config(config: CheckpointSelfPlayConfig) -> None:
         raise ValueError("central_evaluator_batch_size_limit must be positive")
     if config.central_evaluator_flush_timeout_sec < 0.0:
         raise ValueError("central_evaluator_flush_timeout_sec must be non-negative")
+    if config.max_expanded_children is not None and config.max_expanded_children <= 0:
+        raise ValueError("max_expanded_children must be positive")
     if config.inference_precision not in {"fp32", "bf16"}:
         raise ValueError("inference_precision must be fp32 or bf16")
     if config.progress_every_plies < 0:
@@ -901,6 +919,7 @@ def _worker_config(config: CheckpointSelfPlayConfig, *, game_count: int, start_i
         self_play_worker_processes=1,
         central_evaluator_batch_size_limit=config.central_evaluator_batch_size_limit,
         central_evaluator_flush_timeout_sec=config.central_evaluator_flush_timeout_sec,
+        max_expanded_children=config.max_expanded_children,
         progress_every_plies=config.progress_every_plies,
         start_positions=start_positions,
     )
@@ -981,18 +1000,38 @@ def _expand_node_with_evaluation(
     node: _SelfPlayMctsNode,
     legal_moves: tuple[str, ...],
     priors: dict[str, float],
+    *,
+    max_children: int | None,
 ) -> None:
-    prior_values = [max(0.0, float(priors.get(move, 0.0))) for move in legal_moves]
+    expanded_moves = _expanded_moves(legal_moves, priors, max_children=max_children)
+    prior_values = [max(0.0, float(priors.get(move, 0.0))) for move in expanded_moves]
     total = sum(prior_values)
     if total <= 0.0:
-        uniform = 1.0 / len(legal_moves)
-        node.children = [_SelfPlayMctsChild(move=move, node=_SelfPlayMctsNode(prior=uniform)) for move in legal_moves]
+        uniform = 1.0 / len(expanded_moves)
+        node.children = [_SelfPlayMctsChild(move=move, node=_SelfPlayMctsNode(prior=uniform)) for move in expanded_moves]
         return
     inverse_total = 1.0 / total
     node.children = [
         _SelfPlayMctsChild(move=move, node=_SelfPlayMctsNode(prior=prior * inverse_total))
-        for move, prior in zip(legal_moves, prior_values, strict=True)
+        for move, prior in zip(expanded_moves, prior_values, strict=True)
     ]
+
+
+def _expanded_moves(
+    legal_moves: tuple[str, ...],
+    priors: dict[str, float],
+    *,
+    max_children: int | None,
+) -> tuple[str, ...]:
+    if max_children is None or len(legal_moves) <= max_children:
+        return legal_moves
+    return tuple(
+        sorted(
+            legal_moves,
+            key=lambda move: (max(0.0, float(priors.get(move, 0.0))), move),
+            reverse=True,
+        )[:max_children]
+    )
 
 
 def _backpropagate_path(path: list[_SelfPlayMctsNode], value: float) -> None:

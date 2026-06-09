@@ -54,6 +54,7 @@ class ShogiMoveChoiceCheckpointPolicy(DirectMovePolicy):
         board_backend: str = "python-shogi",
         precision: str = "fp32",
         compile_model: bool = False,
+        max_prior_count: int | None = None,
     ) -> ShogiMoveChoiceCheckpointPolicy:
         return cls(
             ShogiMoveChoiceCheckpointEvaluator.from_checkpoint(
@@ -61,6 +62,7 @@ class ShogiMoveChoiceCheckpointPolicy(DirectMovePolicy):
                 device=device,
                 precision=precision,
                 compile_model=compile_model,
+                max_prior_count=max_prior_count,
             ),
             board_backend=board_backend,
         )
@@ -75,6 +77,7 @@ class ShogiMoveChoiceCheckpointEvaluator:
         device: str = "cpu",
         precision: str = "fp32",
         compile_model: bool = False,
+        max_prior_count: int | None = None,
     ) -> ShogiMoveChoiceCheckpointEvaluator:
         try:
             from intrep.problems.shogi_policy_value.inference import ShogiPolicyValueCheckpointEvaluator
@@ -88,6 +91,7 @@ class ShogiMoveChoiceCheckpointEvaluator:
             device=device,
             precision=precision,
             compile_model=compile_model,
+            max_prior_count=max_prior_count,
         )
         return cls(evaluator)
 
