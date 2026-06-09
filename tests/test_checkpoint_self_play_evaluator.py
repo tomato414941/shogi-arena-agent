@@ -74,6 +74,29 @@ class CentralPolicyValueEvaluatorTest(unittest.TestCase):
         self.assertEqual(evaluations[0][0][first_moves[-1]], 1.0)
         self.assertEqual(evaluations[1][0][second_moves[-1]], 1.0)
 
+    def test_forwards_optional_action_indices(self) -> None:
+        seen_requests: list[PositionEvaluationRequest] = []
+
+        def evaluate_positions(requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
+            seen_requests.extend(requests)
+            evaluations: list[PositionEvaluation] = []
+            for request in requests:
+                action_indices = request[2] if len(request) == 3 else None
+                prior_count = len(action_indices) if action_indices is not None else len(request[1])
+                evaluations.append(([1.0 / prior_count] * prior_count, 0.0))
+            return evaluations
+
+        board = shogi.Board()
+        legal_moves = tuple(move.usi() for move in board.legal_moves)
+        action_indices = tuple(range(len(legal_moves)))
+
+        with CentralPolicyValueEvaluator(evaluate_positions, batch_size_limit=8) as central:
+            client = central.client()
+            evaluations = client.evaluate_batch(((board, legal_moves, action_indices),))
+
+        self.assertEqual(seen_requests, [(board.sfen(), legal_moves, action_indices)])
+        self.assertEqual(len(evaluations[0][0]), len(action_indices))
+
     def test_propagates_backend_failure_to_waiting_client(self) -> None:
         def evaluate_positions(_requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
             raise RuntimeError("backend failed")

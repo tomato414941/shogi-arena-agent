@@ -9,11 +9,11 @@ from typing import Any
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard
-from shogi_arena_agent.mcts_evaluator import MovePriors
+from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluationRequest
 from shogi_arena_agent.mcts_performance import leaf_eval_batch_metrics
 
 PositionEvaluation = tuple[MovePriors, float]
-PositionEvaluationRequest = tuple[str, tuple[str, ...]]
+PositionEvaluationRequest = tuple[str, tuple[str, ...]] | tuple[str, tuple[str, ...], tuple[int, ...] | None]
 EvaluatePositions = Callable[[Sequence[PositionEvaluationRequest]], list[PositionEvaluation]]
 
 
@@ -22,6 +22,7 @@ class EvaluationRequest:
     request_id: int
     position_sfen: str
     legal_moves: tuple[str, ...]
+    action_indices: tuple[int, ...] | None
     enqueued_at: float
 
 
@@ -139,7 +140,7 @@ class CentralPolicyValueEvaluator:
                 started_at = perf_counter()
                 evaluations = _evaluate_positions_backend(
                     self.evaluate_positions,
-                    tuple((request.position_sfen, request.legal_moves) for request in requests),
+                    tuple(_position_evaluation_request(request) for request in requests),
                 )
                 elapsed = perf_counter() - started_at
                 self.model_call_count += 1
@@ -201,7 +202,7 @@ class QueuedPolicyValueEvaluator:
 
     def evaluate_batch(
         self,
-        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
+        requests: Sequence[PolicyValueEvaluationRequest],
     ) -> list[PositionEvaluation]:
         if not requests:
             return []
@@ -210,11 +211,21 @@ class QueuedPolicyValueEvaluator:
             raise failure
         response_queue: queue.Queue[_EvaluationResponse] = queue.Queue()
         request_ids: list[int] = []
-        for board, legal_moves in requests:
+        for request in requests:
+            board, legal_moves, action_indices = _board_evaluation_request_parts(request)
             request_id = next(self._request_ids)
             request_ids.append(request_id)
             self._request_queue.put(
-                (EvaluationRequest(request_id, board.sfen(), tuple(legal_moves), perf_counter()), response_queue)
+                (
+                    EvaluationRequest(
+                        request_id,
+                        board.sfen(),
+                        tuple(legal_moves),
+                        action_indices,
+                        perf_counter(),
+                    ),
+                    response_queue,
+                )
             )
         remaining = set(request_ids)
         results: dict[int, PositionEvaluation] = {}
@@ -237,6 +248,7 @@ class ProcessEvaluationRequest:
     request_id: int
     position_sfen: str
     legal_moves: tuple[str, ...]
+    action_indices: tuple[int, ...] | None
     enqueued_at: float
 
 
@@ -342,7 +354,7 @@ class ProcessCentralPolicyValueEvaluator:
                 started_at = perf_counter()
                 evaluations = _evaluate_positions_backend(
                     self.evaluate_positions,
-                    tuple((request.position_sfen, request.legal_moves) for request in batch),
+                    tuple(_process_position_evaluation_request(request) for request in batch),
                 )
                 elapsed = perf_counter() - started_at
                 self.model_call_count += 1
@@ -406,12 +418,13 @@ class ProcessQueuedPolicyValueEvaluator:
 
     def evaluate_batch(
         self,
-        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
+        requests: Sequence[PolicyValueEvaluationRequest],
     ) -> list[PositionEvaluation]:
         if not requests:
             return []
         request_ids: list[int] = []
-        for board, legal_moves in requests:
+        for request in requests:
+            board, legal_moves, action_indices = _board_evaluation_request_parts(request)
             request_id = next(self._request_ids)
             request_ids.append(request_id)
             self.request_queue.put(
@@ -420,6 +433,7 @@ class ProcessQueuedPolicyValueEvaluator:
                     request_id=request_id,
                     position_sfen=board.sfen(),
                     legal_moves=tuple(legal_moves),
+                    action_indices=action_indices,
                     enqueued_at=perf_counter(),
                 )
             )
@@ -449,6 +463,28 @@ def _evaluate_positions_backend(
     if callable(backend):
         return backend(requests)
     raise TypeError("central evaluator backend must be callable or expose evaluate_batch/evaluate_positions")
+
+
+def _board_evaluation_request_parts(
+    request: PolicyValueEvaluationRequest,
+) -> tuple[ShogiBoard, tuple[str, ...], tuple[int, ...] | None]:
+    if len(request) == 2:
+        board, legal_moves = request
+        return board, tuple(legal_moves), None
+    board, legal_moves, action_indices = request
+    return board, tuple(legal_moves), None if action_indices is None else tuple(action_indices)
+
+
+def _position_evaluation_request(request: EvaluationRequest) -> PositionEvaluationRequest:
+    if request.action_indices is None:
+        return (request.position_sfen, request.legal_moves)
+    return (request.position_sfen, request.legal_moves, request.action_indices)
+
+
+def _process_position_evaluation_request(request: ProcessEvaluationRequest) -> PositionEvaluationRequest:
+    if request.action_indices is None:
+        return (request.position_sfen, request.legal_moves)
+    return (request.position_sfen, request.legal_moves, request.action_indices)
 
 
 def _add_backend_performance(target: dict[str, float], evaluate_positions: object) -> None:

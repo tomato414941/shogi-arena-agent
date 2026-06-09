@@ -169,6 +169,54 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertEqual(telemetry.move_performance["model_call_count"], 2)
         self.assertEqual(telemetry.move_performance["actual_nn_leaf_eval_batch_size_max"], 8)
 
+    def test_cshogi_action_plane_self_play_uses_precomputed_action_indices(self) -> None:
+        seen_action_indices = False
+        seen_leaf_without_usis = False
+
+        class FakeEvaluator:
+            accepts_action_indices = True
+
+            @classmethod
+            def from_checkpoint(cls, _checkpoint: str, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_positions(self, requests):
+                nonlocal seen_action_indices, seen_leaf_without_usis
+                evaluations = []
+                for request in requests:
+                    if len(request) == 3:
+                        _sfen, legal_moves, action_indices = request
+                        seen_action_indices = True
+                        seen_leaf_without_usis = seen_leaf_without_usis or (not legal_moves and bool(action_indices))
+                        evaluations.append(([1.0 / len(action_indices)] * len(action_indices), 0.0))
+                    else:
+                        _sfen, legal_moves = request
+                        evaluations.append(({move: 1.0 for move in legal_moves}, 0.0))
+                return evaluations
+
+        result = run_checkpoint_self_play_generation(
+            CheckpointSelfPlayConfig(
+                checkpoint="model.pt",
+                games=1,
+                self_play_worker_processes=1,
+                concurrent_games_per_process=1,
+                max_plies=1,
+                mcts_simulations=8,
+                nn_leaf_eval_batch_limit=8,
+                central_evaluator_batch_size_limit=8,
+                central_evaluator_flush_timeout_sec=0.05,
+                device="cpu",
+                board_backend="cshogi",
+                move_selection=visit_sampling_move_selection_config(seed=1),
+            ),
+            checkpoint_evaluator_cls=FakeEvaluator,
+        )
+
+        self.assertTrue(seen_action_indices)
+        self.assertTrue(seen_leaf_without_usis)
+        transition = result.records[0].transitions[0]
+        self.assertEqual(sum(transition.decision_telemetry.search_evidence["mcts_root_child_visit_counts"].values()), 8)
+
     def test_process_worker_error_includes_traceback(self) -> None:
         class FailingEvaluator:
             @classmethod

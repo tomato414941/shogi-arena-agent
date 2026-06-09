@@ -4,13 +4,13 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from shogi_arena_agent.board_backend import ShogiBoard, legal_move_usis
-from shogi_arena_agent.mcts_evaluator import MovePriors
+from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluationRequest
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 
 
 MoveRanker = Callable[[str, tuple[str, ...]], Sequence[float]]
 PositionEvaluation = tuple[MovePriors, float]
-PositionEvaluationRequest = tuple[str, tuple[str, ...]]
+PositionEvaluationRequest = tuple[str, tuple[str, ...]] | tuple[str, tuple[str, ...], tuple[int, ...] | None]
 
 
 class RankedMovePolicy:
@@ -97,13 +97,14 @@ class ShogiMoveChoiceCheckpointEvaluator:
         evaluate_positions: Callable[[Sequence[PositionEvaluationRequest]], list[PositionEvaluation]] | object,
     ) -> None:
         self._backend = evaluate_positions
+        self.accepts_action_indices = bool(getattr(evaluate_positions, "accepts_action_indices", False))
         self.last_performance: dict[str, float] = {}
 
     def evaluate(self, board: ShogiBoard, legal_moves: tuple[str, ...]) -> tuple[MovePriors, float]:
         return self.evaluate_batch(((board, legal_moves),))[0]
 
-    def evaluate_batch(self, requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]]) -> list[PositionEvaluation]:
-        position_requests = [(board.sfen(), legal_moves) for board, legal_moves in requests]
+    def evaluate_batch(self, requests: Sequence[PolicyValueEvaluationRequest]) -> list[PositionEvaluation]:
+        position_requests = [_position_evaluation_request(request) for request in requests]
         return self.evaluate_positions(position_requests)
 
     def __call__(self, requests: Sequence[PositionEvaluationRequest]) -> list[PositionEvaluation]:
@@ -126,3 +127,13 @@ def _best_prior_move(legal_moves: tuple[str, ...], priors: MovePriors) -> str:
     if len(priors) != len(legal_moves):
         raise ValueError("aligned move priors must match legal move count")
     return legal_moves[max(range(len(legal_moves)), key=lambda index: float(priors[index]))]
+
+
+def _position_evaluation_request(request: PolicyValueEvaluationRequest) -> PositionEvaluationRequest:
+    if len(request) == 2:
+        board, legal_moves = request
+        return (board.sfen(), legal_moves)
+    board, legal_moves, action_indices = request
+    if action_indices is None:
+        return (board.sfen(), legal_moves)
+    return (board.sfen(), legal_moves, action_indices)

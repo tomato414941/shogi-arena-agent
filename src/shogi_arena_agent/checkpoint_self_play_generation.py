@@ -11,6 +11,9 @@ from dataclasses import asdict, dataclass, field
 from statistics import mean
 from time import perf_counter
 
+import cshogi
+import shogi
+
 from shogi_arena_agent.board_backend import ShogiBoard, board_is_black_turn, board_turn_name, copy_board, legal_move_usis
 from shogi_arena_agent.checkpoint_self_play_evaluator import (
     CentralPolicyValueEvaluator,
@@ -39,6 +42,17 @@ from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 
 GenerationProgressCallback = Callable[[dict[str, object]], None]
 ShogiGameRecordCallback = Callable[[ShogiGameRecord], None]
+_SelfPlayMove = int | str
+
+_ACTION_PLANE_DIRECTION_DELTAS = (-10, -9, -8, -1, 1, 8, 9, 10)
+_ACTION_PLANE_KNIGHT_DELTAS = (-19, -17)
+_ACTION_PLANE_MOVE_TYPE_DELTAS = _ACTION_PLANE_DIRECTION_DELTAS + _ACTION_PLANE_KNIGHT_DELTAS
+_ACTION_PLANE_MOVE_TYPE_OFFSET_BY_DELTA = {
+    delta: index for index, delta in enumerate(_ACTION_PLANE_MOVE_TYPE_DELTAS)
+}
+_ACTION_PLANE_PROMOTE_MOVE_TYPE_OFFSET = len(_ACTION_PLANE_MOVE_TYPE_DELTAS)
+_ACTION_PLANE_DROP_MOVE_TYPE_OFFSET = _ACTION_PLANE_PROMOTE_MOVE_TYPE_OFFSET + len(_ACTION_PLANE_MOVE_TYPE_DELTAS)
+_ACTION_PLANE_MOVE_TYPE_COUNT = _ACTION_PLANE_DROP_MOVE_TYPE_OFFSET + 7
 
 
 @dataclass(frozen=True)
@@ -107,6 +121,7 @@ def run_checkpoint_self_play_generation(
         precision=config.inference_precision,
         compile_model=config.compile_model,
     )
+    use_action_indices = _can_use_self_play_action_indices(config, checkpoint_evaluator)
     central_batch_limit = config.central_evaluator_batch_size_limit or config.nn_leaf_eval_batch_limit
     if config.self_play_worker_processes == 1:
         with CentralPolicyValueEvaluator(
@@ -118,6 +133,7 @@ def run_checkpoint_self_play_generation(
                 config,
                 move_selection,
                 evaluator=central_evaluator.client(),
+                use_action_indices=use_action_indices,
             )
             records = _generate_checkpoint_self_play_games_with_selector(
                 config,
@@ -133,6 +149,7 @@ def run_checkpoint_self_play_generation(
             actor=actor,
             move_selection=move_selection,
             evaluate_positions=checkpoint_evaluator,
+            use_action_indices=use_action_indices,
             record_callback=record_callback,
             progress_callback=progress_callback,
         )
@@ -148,6 +165,7 @@ def _generate_checkpoint_self_play_games_with_process_workers(
     actor: ShogiActorSpec,
     move_selection: MoveSelectionConfig,
     evaluate_positions: Callable[[Sequence[tuple[str, tuple[str, ...]]]], list[tuple[MovePriors, float]]],
+    use_action_indices: bool,
     record_callback: ShogiGameRecordCallback | None,
     progress_callback: GenerationProgressCallback | None,
 ) -> tuple[tuple[ShogiGameRecord, ...], dict[str, object]]:
@@ -174,6 +192,7 @@ def _generate_checkpoint_self_play_games_with_process_workers(
                 "config": worker_config,
                 "actor": actor,
                 "move_selection": _worker_move_selection(move_selection, worker_index),
+                "use_action_indices": use_action_indices,
                 "request_queue": request_queue,
                 "response_queue": response_queues[worker_index],
                 "event_queue": event_queue,
@@ -219,6 +238,7 @@ def _run_checkpoint_self_play_worker_process(
     config: CheckpointSelfPlayConfig,
     actor: ShogiActorSpec,
     move_selection: MoveSelectionConfig,
+    use_action_indices: bool,
     request_queue: object,
     response_queue: object,
     event_queue: object,
@@ -232,6 +252,7 @@ def _run_checkpoint_self_play_worker_process(
                 request_queue=request_queue,
                 response_queue=response_queue,
             ),
+            use_action_indices=use_action_indices,
         )
         next_record_index = start_index
 
@@ -372,11 +393,12 @@ class _CheckpointSelfPlayMctsMoveResult:
 @dataclass(slots=True)
 class _SelfPlayMctsNode:
     prior: float
-    move: str = ""
+    move: _SelfPlayMove = ""
     visit_count: int = 0
     value_sum: float = 0.0
     pending: bool = False
-    child_moves: tuple[str, ...] = ()
+    child_moves: tuple[_SelfPlayMove, ...] = ()
+    child_usis: tuple[str, ...] = ()
     child_priors: tuple[float, ...] = ()
     child_visit_counts: list[int] = field(default_factory=list)
     child_value_sums: list[float] = field(default_factory=list)
@@ -402,12 +424,27 @@ class _SelfPlaySelectedSimulation:
 
 
 @dataclass(frozen=True)
+class _SelfPlayLegalMoves:
+    moves: tuple[_SelfPlayMove, ...]
+    usis: tuple[str, ...]
+    action_indices: tuple[int, ...] | None = None
+
+    def __bool__(self) -> bool:
+        return bool(self.moves)
+
+    def evaluation_request(self, board: ShogiBoard):
+        if self.action_indices is None:
+            return (board, self.usis)
+        return (board, self.usis, self.action_indices)
+
+
+@dataclass(frozen=True)
 class _SelfPlayPendingSimulation:
     nodes: list[_SelfPlayMctsNode]
     edge_indices: list[int]
     board: ShogiBoard
     node: _SelfPlayMctsNode
-    legal_moves: tuple[str, ...]
+    legal_moves: _SelfPlayLegalMoves
 
 
 class _CheckpointSelfPlayMctsExecutor:
@@ -424,10 +461,12 @@ class _CheckpointSelfPlayMctsExecutor:
         *,
         config: MctsConfig,
         move_selection: MoveSelectionConfig,
+        use_action_indices: bool = False,
     ) -> None:
         self.evaluator = evaluator
         self.config = config
         self.move_selection = move_selection
+        self.use_action_indices = use_action_indices
         self._rng = random.Random(self.move_selection.seed)
         self.last_multi_position_search_performance: MultiPositionMctsPerformance | None = None
 
@@ -445,6 +484,7 @@ class _CheckpointSelfPlayMctsExecutor:
                 move_selection=self.move_selection,
                 rng=self._rng,
                 leaf_eval_batch_size_limit=self.config.nn_leaf_eval_batch_limit,
+                use_action_indices=self.use_action_indices,
             )
             for position in positions
         ]
@@ -516,7 +556,11 @@ class _CheckpointSelfPlayMctsExecutor:
             return None, True
 
         legal_moves_started_at = perf_counter()
-        legal_moves = legal_move_usis(simulation.board)
+        legal_moves = _self_play_legal_moves_for_board(
+            simulation.board,
+            use_action_indices=self.use_action_indices,
+            include_usis=not self.use_action_indices,
+        )
         self._record_phase_time(state, search_stats, "legal_moves", perf_counter() - legal_moves_started_at)
         if not legal_moves:
             self._complete_simulation(
@@ -565,7 +609,9 @@ class _CheckpointSelfPlayMctsExecutor:
 
     def _expand_roots(self, states: Sequence["_SelfPlayMctsSearchState"], search_stats: "_SelfPlayMctsSearchStats") -> None:
         started_at = perf_counter()
-        evaluations = self.evaluator.evaluate_batch(tuple((state.board, state.legal_moves) for state in states))
+        evaluations = self.evaluator.evaluate_batch(
+            tuple(state.legal_moves.evaluation_request(state.board) for state in states)
+        )
         elapsed = perf_counter() - started_at
         search_stats.model_call_count += 1
         search_stats.model_wall_time_sec += elapsed
@@ -584,7 +630,7 @@ class _CheckpointSelfPlayMctsExecutor:
         search_stats: "_SelfPlayMctsSearchStats",
     ) -> None:
         batch_build_started_at = perf_counter()
-        requests = tuple((simulation.board, simulation.legal_moves) for _state, simulation in pending)
+        requests = tuple(simulation.legal_moves.evaluation_request(simulation.board) for _state, simulation in pending)
         batch_build_elapsed = perf_counter() - batch_build_started_at
         search_stats.add_phase_time("batch_build", batch_build_elapsed)
         for state in _unique_pending_states(pending):
@@ -622,7 +668,7 @@ class _CheckpointSelfPlayMctsExecutor:
 @dataclass
 class _SelfPlayMctsSearchState:
     board: ShogiBoard
-    legal_moves: tuple[str, ...]
+    legal_moves: _SelfPlayLegalMoves
     root: _SelfPlayMctsNode
     started_at: float
     remaining_simulations: int
@@ -646,12 +692,17 @@ class _SelfPlayMctsSearchState:
         move_selection: MoveSelectionConfig,
         rng: random.Random,
         leaf_eval_batch_size_limit: int,
+        use_action_indices: bool,
     ) -> "_SelfPlayMctsSearchState":
         position_started_at = perf_counter()
         board = board_from_position(position, backend=board_backend)
         position_elapsed = perf_counter() - position_started_at
         legal_moves_started_at = perf_counter()
-        legal_moves = legal_move_usis(board)
+        legal_moves = _self_play_legal_moves_for_board(
+            board,
+            use_action_indices=use_action_indices,
+            include_usis=True,
+        )
         legal_moves_elapsed = perf_counter() - legal_moves_started_at
         state = cls(
             board=board,
@@ -838,6 +889,7 @@ def _checkpoint_self_play_selector(
     move_selection: MoveSelectionConfig,
     *,
     evaluator: PolicyValueEvaluator,
+    use_action_indices: bool = False,
 ) -> "_CheckpointSelfPlayMctsExecutor":
     return _CheckpointSelfPlayMctsExecutor(
         evaluator=evaluator,
@@ -848,6 +900,7 @@ def _checkpoint_self_play_selector(
             root_reuse=False,
         ),
         move_selection=move_selection,
+        use_action_indices=use_action_indices,
     )
 
 
@@ -988,6 +1041,74 @@ def _emit_progress(payload: dict[str, object], *, progress_callback: GenerationP
     print("progress " + json.dumps(payload, sort_keys=True), file=sys.stderr, flush=True)
 
 
+def _can_use_self_play_action_indices(config: CheckpointSelfPlayConfig, evaluator: object) -> bool:
+    return config.board_backend == "cshogi" and bool(getattr(evaluator, "accepts_action_indices", False))
+
+
+def _self_play_legal_moves_for_board(
+    board: ShogiBoard,
+    *,
+    use_action_indices: bool,
+    include_usis: bool,
+) -> _SelfPlayLegalMoves:
+    if use_action_indices and isinstance(board, cshogi.Board):
+        moves = tuple(board.legal_moves)
+        if not moves:
+            return _SelfPlayLegalMoves((), (), ())
+        return _SelfPlayLegalMoves(
+            moves=moves,
+            usis=tuple(cshogi.move_to_usi(move) for move in moves) if include_usis else (),
+            action_indices=tuple(_cshogi_action_plane_policy_action_index(move, turn=board.turn) for move in moves),
+        )
+    usis = legal_move_usis(board)
+    return _SelfPlayLegalMoves(moves=usis, usis=usis, action_indices=None)
+
+
+def _push_self_play_move(board: ShogiBoard, move: _SelfPlayMove) -> None:
+    if isinstance(board, cshogi.Board) and isinstance(move, int):
+        board.push(move)
+        return
+    board.push_usi(str(move))
+
+
+def _cshogi_action_plane_policy_action_index(move: int, *, turn: int) -> int:
+    to_square = _cshogi_square_to_absolute_square(cshogi.move_to(move))
+    relative_to_square = _side_to_move_relative_square(to_square, turn)
+    move_type = _cshogi_action_plane_policy_move_type(move, to_square=to_square, turn=turn)
+    return relative_to_square * _ACTION_PLANE_MOVE_TYPE_COUNT + move_type
+
+
+def _cshogi_action_plane_policy_move_type(move: int, *, to_square: int, turn: int) -> int:
+    if cshogi.move_is_drop(move):
+        return _ACTION_PLANE_DROP_MOVE_TYPE_OFFSET + cshogi.move_drop_hand_piece(move)
+    from_square = _cshogi_square_to_absolute_square(cshogi.move_from(move))
+    relative_from_square = _side_to_move_relative_square(from_square, turn)
+    relative_to_square = _side_to_move_relative_square(to_square, turn)
+    delta = relative_to_square - relative_from_square
+    if delta not in _ACTION_PLANE_KNIGHT_DELTAS:
+        delta = _action_plane_direction_delta(relative_from_square, relative_to_square)
+    offset = _ACTION_PLANE_PROMOTE_MOVE_TYPE_OFFSET if cshogi.move_is_promotion(move) else 0
+    return offset + _ACTION_PLANE_MOVE_TYPE_OFFSET_BY_DELTA[delta]
+
+
+def _action_plane_direction_delta(relative_from_square: int, relative_to_square: int) -> int:
+    from_rank, from_file = divmod(relative_from_square, 9)
+    to_rank, to_file = divmod(relative_to_square, 9)
+    rank_delta = 0 if to_rank == from_rank else 1 if to_rank > from_rank else -1
+    file_delta = 0 if to_file == from_file else 1 if to_file > from_file else -1
+    return rank_delta * 9 + file_delta
+
+
+def _cshogi_square_to_absolute_square(square: int) -> int:
+    return (square % 9) * 9 + (8 - square // 9)
+
+
+def _side_to_move_relative_square(square: int, turn: int) -> int:
+    if turn == shogi.BLACK:
+        return square
+    return 80 - square
+
+
 def _select_pending_simulation(
     root: _SelfPlayMctsNode,
     board: ShogiBoard,
@@ -1010,7 +1131,7 @@ def _select_pending_simulation(
             node.child_nodes[selected_index] = child
         edge_indices.append(selected_index)
         node = child
-        board.push_usi(node.move)
+        _push_self_play_move(board, node.move)
         nodes.append(node)
     return _SelfPlaySelectedSimulation(
         nodes=nodes,
@@ -1022,27 +1143,30 @@ def _select_pending_simulation(
 
 def _expand_node_with_evaluation(
     node: _SelfPlayMctsNode,
-    legal_moves: tuple[str, ...],
+    legal_moves: _SelfPlayLegalMoves,
     priors: MovePriors,
 ) -> None:
     prior_values = _aligned_self_play_priors(legal_moves, priors)
-    node.child_moves = legal_moves
+    node.child_moves = legal_moves.moves
+    node.child_usis = legal_moves.usis
     node.child_priors = prior_values
-    node.child_visit_counts = [0] * len(legal_moves)
-    node.child_value_sums = [0.0] * len(legal_moves)
-    node.child_nodes = [None] * len(legal_moves)
+    node.child_visit_counts = [0] * len(legal_moves.moves)
+    node.child_value_sums = [0.0] * len(legal_moves.moves)
+    node.child_nodes = [None] * len(legal_moves.moves)
 
 
-def _aligned_self_play_priors(legal_moves: tuple[str, ...], priors: MovePriors) -> tuple[float, ...]:
+def _aligned_self_play_priors(legal_moves: _SelfPlayLegalMoves, priors: MovePriors) -> tuple[float, ...]:
     if isinstance(priors, Mapping):
-        prior_values = [max(0.0, float(priors.get(move, 0.0))) for move in legal_moves]
+        if len(legal_moves.usis) != len(legal_moves.moves):
+            raise ValueError("mapping priors require USI legal moves")
+        prior_values = [max(0.0, float(priors.get(move, 0.0))) for move in legal_moves.usis]
         total = sum(prior_values)
         if total <= 0.0:
-            uniform = 1.0 / len(legal_moves)
-            return tuple(uniform for _move in legal_moves)
+            uniform = 1.0 / len(legal_moves.moves)
+            return tuple(uniform for _move in legal_moves.moves)
         inverse_total = 1.0 / total
         return tuple(prior * inverse_total for prior in prior_values)
-    if len(priors) != len(legal_moves):
+    if len(priors) != len(legal_moves.moves):
         raise ValueError("aligned move priors must match legal move count")
     return tuple(float(prior) for prior in priors)
 
@@ -1071,7 +1195,7 @@ def _select_self_play_puct_child_index(
     parent_sqrt = max(1, node.visit_count) ** 0.5
     best_index: int | None = None
     best_score: float | None = None
-    best_move = ""
+    best_move_key = ""
     child_moves = node.child_moves
     child_nodes = node.child_nodes
     child_visit_counts = node.child_visit_counts
@@ -1085,11 +1209,11 @@ def _select_self_play_puct_child_index(
         child_visit_count = child_visit_counts[index]
         child_value_mean = child_value_sums[index] / child_visit_count if child_visit_count else 0.0
         score = -child_value_mean + exploration_scale * child_priors[index] / (1 + child_visit_count)
-        move = child_moves[index]
-        if best_score is None or score > best_score or (score == best_score and move > best_move):
+        move_key = str(child_moves[index])
+        if best_score is None or score > best_score or (score == best_score and move_key > best_move_key):
             best_index = index
             best_score = score
-            best_move = move
+            best_move_key = move_key
     return best_index
 
 
@@ -1131,30 +1255,38 @@ def _select_self_play_final_move_at_ply(
 
 
 def _deterministic_self_play_final_move(root: _SelfPlayMctsNode) -> str:
-    return root.child_moves[
-        max(
-            range(len(root.child_moves)),
-            key=lambda index: (
-                root.child_visit_counts[index],
-                -_self_play_child_value_mean(root, index),
-                root.child_moves[index],
-            ),
-        )
-    ]
+    selected_index = max(
+        range(len(root.child_moves)),
+        key=lambda index: (
+            root.child_visit_counts[index],
+            -_self_play_child_value_mean(root, index),
+            _self_play_child_usi(root, index),
+        ),
+    )
+    return _self_play_child_usi(root, selected_index)
+
+
+def _self_play_child_usi(root: _SelfPlayMctsNode, index: int) -> str:
+    if root.child_usis:
+        return root.child_usis[index]
+    move = root.child_moves[index]
+    if isinstance(move, str):
+        return move
+    return cshogi.move_to_usi(move)
 
 
 def _sample_self_play_visit_count_move(root: _SelfPlayMctsNode, *, temperature: float, rng: random.Random) -> str:
     weights = [max(0, visit_count) ** (1.0 / temperature) for visit_count in root.child_visit_counts]
     total = sum(weights)
     if total <= 0:
-        return rng.choice(root.child_moves)
+        return _self_play_child_usi(root, rng.randrange(len(root.child_moves)))
     threshold = rng.random() * total
     cumulative = 0.0
-    for move, weight in zip(root.child_moves, weights, strict=True):
+    for index, weight in enumerate(weights):
         cumulative += weight
         if cumulative >= threshold:
-            return move
-    return root.child_moves[-1]
+            return _self_play_child_usi(root, index)
+    return _self_play_child_usi(root, len(root.child_moves) - 1)
 
 
 def _self_play_visit_count_policy_targets(root: _SelfPlayMctsNode) -> dict[str, float]:
@@ -1162,8 +1294,8 @@ def _self_play_visit_count_policy_targets(root: _SelfPlayMctsNode) -> dict[str, 
     if total <= 0:
         return _self_play_normalized_priors(root)
     return {
-        move: visit_count / total
-        for move, visit_count in zip(root.child_moves, root.child_visit_counts, strict=True)
+        _self_play_child_usi(root, index): visit_count / total
+        for index, visit_count in enumerate(root.child_visit_counts)
     }
 
 
@@ -1171,18 +1303,18 @@ def _self_play_normalized_priors(root: _SelfPlayMctsNode) -> dict[str, float]:
     total = sum(max(0.0, prior) for prior in root.child_priors)
     if total <= 0.0:
         uniform = 1.0 / len(root.child_moves)
-        return {move: uniform for move in root.child_moves}
+        return {_self_play_child_usi(root, index): uniform for index in range(len(root.child_moves))}
     inverse_total = 1.0 / total
     return {
-        move: max(0.0, prior) * inverse_total
-        for move, prior in zip(root.child_moves, root.child_priors, strict=True)
+        _self_play_child_usi(root, index): max(0.0, prior) * inverse_total
+        for index, prior in enumerate(root.child_priors)
     }
 
 
 def _self_play_root_child_visit_counts(root: _SelfPlayMctsNode) -> dict[str, int]:
     return {
-        move: visit_count
-        for move, visit_count in zip(root.child_moves, root.child_visit_counts, strict=True)
+        _self_play_child_usi(root, index): visit_count
+        for index, visit_count in enumerate(root.child_visit_counts)
     }
 
 

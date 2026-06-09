@@ -6,12 +6,17 @@ from typing import Protocol
 from shogi_arena_agent.board_backend import ShogiBoard
 
 MovePriors = Mapping[str, float] | Sequence[float]
+PolicyValueEvaluationRequest = tuple[ShogiBoard, tuple[str, ...]] | tuple[
+    ShogiBoard,
+    tuple[str, ...],
+    tuple[int, ...] | None,
+]
 
 
 class PolicyValueEvaluator(Protocol):
     def evaluate_batch(
         self,
-        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
+        requests: Sequence[PolicyValueEvaluationRequest],
     ) -> list[tuple[MovePriors, float]]:
         """Return move priors and values from the side-to-move perspective."""
 
@@ -19,10 +24,11 @@ class PolicyValueEvaluator(Protocol):
 class UniformPolicyValueEvaluator:
     def evaluate_batch(
         self,
-        requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]],
+        requests: Sequence[PolicyValueEvaluationRequest],
     ) -> list[tuple[MovePriors, float]]:
         evaluations: list[tuple[MovePriors, float]] = []
-        for _board, legal_moves in requests:
+        for request in requests:
+            legal_moves = request[1]
             if not legal_moves:
                 evaluations.append(({}, -1.0))
                 continue
