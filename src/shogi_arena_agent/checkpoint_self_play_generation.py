@@ -370,18 +370,13 @@ class _CheckpointSelfPlayMctsMoveResult:
 
 
 @dataclass(slots=True)
-class _SelfPlayMctsChild:
-    move: str
-    node: "_SelfPlayMctsNode"
-
-
-@dataclass(slots=True)
 class _SelfPlayMctsNode:
     prior: float
+    move: str = ""
     visit_count: int = 0
     value_sum: float = 0.0
     pending: bool = False
-    children: list[_SelfPlayMctsChild] = field(default_factory=list)
+    children: list["_SelfPlayMctsNode"] = field(default_factory=list)
 
     @property
     def value_mean(self) -> float:
@@ -969,10 +964,8 @@ def _select_pending_simulation(
         selected = _select_self_play_puct_child(node, c_puct=c_puct)
         if selected is None:
             return None
-        child = selected
-        move = child.move
-        node = child.node
-        board.push_usi(move)
+        node = selected
+        board.push_usi(node.move)
         path.append(node)
     return _SelfPlaySelectedSimulation(path=path, board=board, node=node)
 
@@ -986,11 +979,11 @@ def _expand_node_with_evaluation(
     total = sum(prior_values)
     if total <= 0.0:
         uniform = 1.0 / len(legal_moves)
-        node.children = [_SelfPlayMctsChild(move=move, node=_SelfPlayMctsNode(prior=uniform)) for move in legal_moves]
+        node.children = [_SelfPlayMctsNode(move=move, prior=uniform) for move in legal_moves]
         return
     inverse_total = 1.0 / total
     node.children = [
-        _SelfPlayMctsChild(move=move, node=_SelfPlayMctsNode(prior=prior * inverse_total))
+        _SelfPlayMctsNode(move=move, prior=prior * inverse_total)
         for move, prior in zip(legal_moves, prior_values, strict=True)
     ]
 
@@ -1006,17 +999,16 @@ def _select_self_play_puct_child(
     node: _SelfPlayMctsNode,
     *,
     c_puct: float,
-) -> _SelfPlayMctsChild | None:
+) -> _SelfPlayMctsNode | None:
     parent_sqrt = max(1, node.visit_count) ** 0.5
-    best: _SelfPlayMctsChild | None = None
+    best: _SelfPlayMctsNode | None = None
     best_score: tuple[float, str] | None = None
     for child in node.children:
-        child_node = child.node
-        if child_node.pending:
+        if child.pending:
             continue
-        child_visit_count = child_node.visit_count
-        child_value_mean = child_node.value_sum / child_visit_count if child_visit_count else 0.0
-        exploration = c_puct * child_node.prior * parent_sqrt / (1 + child_visit_count)
+        child_visit_count = child.visit_count
+        child_value_mean = child.value_sum / child_visit_count if child_visit_count else 0.0
+        exploration = c_puct * child.prior * parent_sqrt / (1 + child_visit_count)
         score = (-child_value_mean + exploration, child.move)
         if best_score is None or score > best_score:
             best = child
@@ -1027,7 +1019,7 @@ def _select_self_play_puct_child(
 def _self_play_node_has_pending_descendant(node: _SelfPlayMctsNode) -> bool:
     if node.pending:
         return True
-    return any(_self_play_node_has_pending_descendant(child.node) for child in node.children)
+    return any(_self_play_node_has_pending_descendant(child) for child in node.children)
 
 
 def _unique_pending_states(
@@ -1062,11 +1054,11 @@ def _select_self_play_final_move_at_ply(
 
 
 def _deterministic_self_play_final_move(root: _SelfPlayMctsNode) -> str:
-    return max(root.children, key=lambda child: (child.node.visit_count, -child.node.value_mean, child.move)).move
+    return max(root.children, key=lambda child: (child.visit_count, -child.value_mean, child.move)).move
 
 
 def _sample_self_play_visit_count_move(root: _SelfPlayMctsNode, *, temperature: float, rng: random.Random) -> str:
-    weights = [max(0, child.node.visit_count) ** (1.0 / temperature) for child in root.children]
+    weights = [max(0, child.visit_count) ** (1.0 / temperature) for child in root.children]
     total = sum(weights)
     if total <= 0:
         return rng.choice(root.children).move
@@ -1080,23 +1072,23 @@ def _sample_self_play_visit_count_move(root: _SelfPlayMctsNode, *, temperature: 
 
 
 def _self_play_visit_count_policy_targets(root: _SelfPlayMctsNode) -> dict[str, float]:
-    total = sum(child.node.visit_count for child in root.children)
+    total = sum(child.visit_count for child in root.children)
     if total <= 0:
         return _self_play_normalized_priors(root)
-    return {child.move: child.node.visit_count / total for child in root.children}
+    return {child.move: child.visit_count / total for child in root.children}
 
 
 def _self_play_normalized_priors(root: _SelfPlayMctsNode) -> dict[str, float]:
-    total = sum(max(0.0, child.node.prior) for child in root.children)
+    total = sum(max(0.0, child.prior) for child in root.children)
     if total <= 0.0:
         uniform = 1.0 / len(root.children)
         return {child.move: uniform for child in root.children}
     inverse_total = 1.0 / total
-    return {child.move: max(0.0, child.node.prior) * inverse_total for child in root.children}
+    return {child.move: max(0.0, child.prior) * inverse_total for child in root.children}
 
 
 def _self_play_root_child_visit_counts(root: _SelfPlayMctsNode) -> dict[str, int]:
-    return {child.move: child.node.visit_count for child in root.children}
+    return {child.move: child.visit_count for child in root.children}
 
 
 def _mcts_move_performance_since(
