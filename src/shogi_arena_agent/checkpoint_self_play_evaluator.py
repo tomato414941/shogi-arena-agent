@@ -9,9 +9,10 @@ from typing import Any
 from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard
+from shogi_arena_agent.mcts_evaluator import MovePriors
 from shogi_arena_agent.mcts_performance import leaf_eval_batch_metrics
 
-PositionEvaluation = tuple[dict[str, float], float]
+PositionEvaluation = tuple[MovePriors, float]
 PositionEvaluationRequest = tuple[str, tuple[str, ...]]
 EvaluatePositions = Callable[[Sequence[PositionEvaluationRequest]], list[PositionEvaluation]]
 
@@ -27,7 +28,7 @@ class EvaluationRequest:
 @dataclass(frozen=True)
 class EvaluationResult:
     request_id: int
-    priors: dict[str, float]
+    priors: MovePriors
     value: float
 
 

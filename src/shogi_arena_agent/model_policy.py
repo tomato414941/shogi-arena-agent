@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from shogi_arena_agent.board_backend import ShogiBoard, legal_move_usis
+from shogi_arena_agent.mcts_evaluator import MovePriors
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 
 
 MoveRanker = Callable[[str, tuple[str, ...]], Sequence[float]]
-PositionEvaluation = tuple[dict[str, float], float]
+PositionEvaluation = tuple[MovePriors, float]
 PositionEvaluationRequest = tuple[str, tuple[str, ...]]
 
 
@@ -41,7 +42,7 @@ class DirectMovePolicy:
         if not legal_moves:
             return RESIGN_MOVE
         priors, _value = self.evaluator.evaluate_batch(((board, legal_moves),))[0]
-        return max(legal_moves, key=lambda move: priors.get(move, 0.0))
+        return _best_prior_move(legal_moves, priors)
 
 
 class ShogiMoveChoiceCheckpointPolicy(DirectMovePolicy):
@@ -98,7 +99,7 @@ class ShogiMoveChoiceCheckpointEvaluator:
         self._backend = evaluate_positions
         self.last_performance: dict[str, float] = {}
 
-    def evaluate(self, board: ShogiBoard, legal_moves: tuple[str, ...]) -> tuple[dict[str, float], float]:
+    def evaluate(self, board: ShogiBoard, legal_moves: tuple[str, ...]) -> tuple[MovePriors, float]:
         return self.evaluate_batch(((board, legal_moves),))[0]
 
     def evaluate_batch(self, requests: Sequence[tuple[ShogiBoard, tuple[str, ...]]]) -> list[PositionEvaluation]:
@@ -117,3 +118,11 @@ class ShogiMoveChoiceCheckpointEvaluator:
             raise TypeError("checkpoint evaluator backend must be callable or expose evaluate_batch")
         self.last_performance = dict(getattr(self._backend, "last_performance", {}))
         return evaluations
+
+
+def _best_prior_move(legal_moves: tuple[str, ...], priors: MovePriors) -> str:
+    if isinstance(priors, Mapping):
+        return max(legal_moves, key=lambda move: priors.get(move, 0.0))
+    if len(priors) != len(legal_moves):
+        raise ValueError("aligned move priors must match legal move count")
+    return legal_moves[max(range(len(legal_moves)), key=lambda index: float(priors[index]))]
