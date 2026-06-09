@@ -396,7 +396,6 @@ class _SelfPlayMctsNode:
 @dataclass(frozen=True)
 class _SelfPlaySelectedSimulation:
     nodes: list[_SelfPlayMctsNode]
-    edge_parents: list[_SelfPlayMctsNode]
     edge_indices: list[int]
     board: ShogiBoard
     node: _SelfPlayMctsNode
@@ -405,7 +404,6 @@ class _SelfPlaySelectedSimulation:
 @dataclass(frozen=True)
 class _SelfPlayPendingSimulation:
     nodes: list[_SelfPlayMctsNode]
-    edge_parents: list[_SelfPlayMctsNode]
     edge_indices: list[int]
     board: ShogiBoard
     node: _SelfPlayMctsNode
@@ -512,7 +510,6 @@ class _CheckpointSelfPlayMctsExecutor:
                 state,
                 search_stats,
                 simulation.nodes,
-                simulation.edge_parents,
                 simulation.edge_indices,
                 value=-1.0,
             )
@@ -526,7 +523,6 @@ class _CheckpointSelfPlayMctsExecutor:
                 state,
                 search_stats,
                 simulation.nodes,
-                simulation.edge_parents,
                 simulation.edge_indices,
                 value=-1.0,
             )
@@ -535,7 +531,6 @@ class _CheckpointSelfPlayMctsExecutor:
         simulation.node.pending = True
         return _SelfPlayPendingSimulation(
             nodes=simulation.nodes,
-            edge_parents=simulation.edge_parents,
             edge_indices=simulation.edge_indices,
             board=simulation.board,
             node=simulation.node,
@@ -547,13 +542,12 @@ class _CheckpointSelfPlayMctsExecutor:
         state: "_SelfPlayMctsSearchState",
         search_stats: "_SelfPlayMctsSearchStats",
         nodes: list[_SelfPlayMctsNode],
-        edge_parents: list[_SelfPlayMctsNode],
         edge_indices: list[int],
         *,
         value: float,
     ) -> None:
         backup_started_at = perf_counter()
-        _backpropagate_path(nodes, edge_parents, edge_indices, value)
+        _backpropagate_path(nodes, edge_indices, value)
         self._record_phase_time(state, search_stats, "backup", perf_counter() - backup_started_at)
         state.completed_simulations += 1
         search_stats.completed_simulations += 1
@@ -620,7 +614,6 @@ class _CheckpointSelfPlayMctsExecutor:
                 state,
                 search_stats,
                 simulation.nodes,
-                simulation.edge_parents,
                 simulation.edge_indices,
                 value=max(-1.0, min(1.0, float(value))),
             )
@@ -1003,9 +996,8 @@ def _select_pending_simulation(
 ) -> _SelfPlaySelectedSimulation | None:
     node = root
     nodes = [node]
-    edge_parents: list[_SelfPlayMctsNode] = []
     edge_indices: list[int] = []
-    while node.is_expanded:
+    while node.child_moves:
         selected_index = _select_self_play_puct_child_index(node, c_puct=c_puct)
         if selected_index is None:
             return None
@@ -1016,14 +1008,12 @@ def _select_pending_simulation(
                 prior=node.child_priors[selected_index],
             )
             node.child_nodes[selected_index] = child
-        edge_parents.append(node)
         edge_indices.append(selected_index)
         node = child
         board.push_usi(node.move)
         nodes.append(node)
     return _SelfPlaySelectedSimulation(
         nodes=nodes,
-        edge_parents=edge_parents,
         edge_indices=edge_indices,
         board=board,
         node=node,
@@ -1059,7 +1049,6 @@ def _aligned_self_play_priors(legal_moves: tuple[str, ...], priors: MovePriors) 
 
 def _backpropagate_path(
     nodes: list[_SelfPlayMctsNode],
-    edge_parents: list[_SelfPlayMctsNode],
     edge_indices: list[int],
     value: float,
 ) -> None:
@@ -1067,7 +1056,9 @@ def _backpropagate_path(
         visited_node.visit_count += 1
         visited_node.value_sum += value
         value = -value
-    for parent, index, node in zip(edge_parents, edge_indices, nodes[1:], strict=True):
+    for edge_offset, index in enumerate(edge_indices):
+        parent = nodes[edge_offset]
+        node = nodes[edge_offset + 1]
         parent.child_visit_counts[index] = node.visit_count
         parent.child_value_sums[index] = node.value_sum
 
@@ -1087,13 +1078,14 @@ def _select_self_play_puct_child_index(
     child_value_sums = node.child_value_sums
     child_priors = node.child_priors
     exploration_scale = c_puct * parent_sqrt
-    for index, move in enumerate(child_moves):
+    for index in range(len(child_moves)):
         child = child_nodes[index]
         if child is not None and child.pending:
             continue
         child_visit_count = child_visit_counts[index]
         child_value_mean = child_value_sums[index] / child_visit_count if child_visit_count else 0.0
         score = -child_value_mean + exploration_scale * child_priors[index] / (1 + child_visit_count)
+        move = child_moves[index]
         if best_score is None or score > best_score or (score == best_score and move > best_move):
             best_index = index
             best_score = score
