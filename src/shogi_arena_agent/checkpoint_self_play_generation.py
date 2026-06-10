@@ -8,6 +8,7 @@ import sys
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 from statistics import mean
 from time import perf_counter
 
@@ -439,6 +440,12 @@ class _SelfPlayLegalMoves:
 
 
 @dataclass(frozen=True)
+class _SelfPlayLegalMoveBuild:
+    legal_moves: _SelfPlayLegalMoves
+    phase_times: dict[str, float]
+
+
+@dataclass(frozen=True)
 class _SelfPlayPendingSimulation:
     nodes: list[_SelfPlayMctsNode]
     edge_indices: list[int]
@@ -555,13 +562,14 @@ class _CheckpointSelfPlayMctsExecutor:
             )
             return None, True
 
-        legal_moves_started_at = perf_counter()
-        legal_moves = _self_play_legal_moves_for_board(
+        legal_moves_build = _self_play_legal_moves_for_board(
             simulation.board,
             use_action_indices=self.use_action_indices,
             include_usis=not self.use_action_indices,
         )
-        self._record_phase_time(state, search_stats, "legal_moves", perf_counter() - legal_moves_started_at)
+        legal_moves = legal_moves_build.legal_moves
+        for phase_name, elapsed in legal_moves_build.phase_times.items():
+            self._record_phase_time(state, search_stats, phase_name, elapsed)
         if not legal_moves:
             self._complete_simulation(
                 state,
@@ -697,13 +705,12 @@ class _SelfPlayMctsSearchState:
         position_started_at = perf_counter()
         board = board_from_position(position, backend=board_backend)
         position_elapsed = perf_counter() - position_started_at
-        legal_moves_started_at = perf_counter()
-        legal_moves = _self_play_legal_moves_for_board(
+        legal_moves_build = _self_play_legal_moves_for_board(
             board,
             use_action_indices=use_action_indices,
             include_usis=True,
         )
-        legal_moves_elapsed = perf_counter() - legal_moves_started_at
+        legal_moves = legal_moves_build.legal_moves
         state = cls(
             board=board,
             legal_moves=legal_moves,
@@ -716,7 +723,8 @@ class _SelfPlayMctsSearchState:
             rng=rng,
         )
         state.add_phase_time("position_parse", position_elapsed)
-        state.add_phase_time("legal_moves", legal_moves_elapsed)
+        for phase_name, elapsed in legal_moves_build.phase_times.items():
+            state.add_phase_time(phase_name, elapsed)
         return state
 
     def add_phase_time(self, name: str, elapsed: float) -> None:
@@ -1050,18 +1058,48 @@ def _self_play_legal_moves_for_board(
     *,
     use_action_indices: bool,
     include_usis: bool,
-) -> _SelfPlayLegalMoves:
+) -> _SelfPlayLegalMoveBuild:
+    started_at = perf_counter()
     if use_action_indices and isinstance(board, cshogi.Board):
+        enumerate_started_at = perf_counter()
         moves = tuple(board.legal_moves)
+        enumerate_elapsed = perf_counter() - enumerate_started_at
         if not moves:
-            return _SelfPlayLegalMoves((), (), ())
-        return _SelfPlayLegalMoves(
-            moves=moves,
-            usis=tuple(cshogi.move_to_usi(move) for move in moves) if include_usis else (),
-            action_indices=tuple(_cshogi_action_plane_policy_action_index(move, turn=board.turn) for move in moves),
+            total_elapsed = perf_counter() - started_at
+            return _SelfPlayLegalMoveBuild(
+                _SelfPlayLegalMoves((), (), ()),
+                {
+                    "legal_moves": total_elapsed,
+                    "legal_moves_enumerate": enumerate_elapsed,
+                },
+            )
+        usi_started_at = perf_counter()
+        usis = tuple(cshogi.move_to_usi(move) for move in moves) if include_usis else ()
+        usi_elapsed = perf_counter() - usi_started_at
+        action_index_started_at = perf_counter()
+        action_indices = tuple(_cached_cshogi_action_plane_policy_action_index(move, board.turn) for move in moves)
+        action_index_elapsed = perf_counter() - action_index_started_at
+        total_elapsed = perf_counter() - started_at
+        return _SelfPlayLegalMoveBuild(
+            _SelfPlayLegalMoves(moves=moves, usis=usis, action_indices=action_indices),
+            {
+                "legal_moves": total_elapsed,
+                "legal_moves_enumerate": enumerate_elapsed,
+                "legal_moves_usi": usi_elapsed,
+                "legal_moves_action_index": action_index_elapsed,
+            },
         )
+    usi_started_at = perf_counter()
     usis = legal_move_usis(board)
-    return _SelfPlayLegalMoves(moves=usis, usis=usis, action_indices=None)
+    usi_elapsed = perf_counter() - usi_started_at
+    total_elapsed = perf_counter() - started_at
+    return _SelfPlayLegalMoveBuild(
+        _SelfPlayLegalMoves(moves=usis, usis=usis, action_indices=None),
+        {
+            "legal_moves": total_elapsed,
+            "legal_moves_usi": usi_elapsed,
+        },
+    )
 
 
 def _push_self_play_move(board: ShogiBoard, move: _SelfPlayMove) -> None:
@@ -1076,6 +1114,11 @@ def _cshogi_action_plane_policy_action_index(move: int, *, turn: int) -> int:
     relative_to_square = _side_to_move_relative_square(to_square, turn)
     move_type = _cshogi_action_plane_policy_move_type(move, to_square=to_square, turn=turn)
     return relative_to_square * _ACTION_PLANE_MOVE_TYPE_COUNT + move_type
+
+
+@lru_cache(maxsize=65536)
+def _cached_cshogi_action_plane_policy_action_index(move: int, turn: int) -> int:
+    return _cshogi_action_plane_policy_action_index(move, turn=turn)
 
 
 def _cshogi_action_plane_policy_move_type(move: int, *, to_square: int, turn: int) -> int:
