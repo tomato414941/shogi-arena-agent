@@ -54,6 +54,29 @@ _ACTION_PLANE_MOVE_TYPE_OFFSET_BY_DELTA = {
 _ACTION_PLANE_PROMOTE_MOVE_TYPE_OFFSET = len(_ACTION_PLANE_MOVE_TYPE_DELTAS)
 _ACTION_PLANE_DROP_MOVE_TYPE_OFFSET = _ACTION_PLANE_PROMOTE_MOVE_TYPE_OFFSET + len(_ACTION_PLANE_MOVE_TYPE_DELTAS)
 _ACTION_PLANE_MOVE_TYPE_COUNT = _ACTION_PLANE_DROP_MOVE_TYPE_OFFSET + 7
+_CSHOGI_TO_ABSOLUTE_SQUARE = tuple((square % 9) * 9 + (8 - square // 9) for square in range(81))
+_SIDE_TO_MOVE_RELATIVE_SQUARES = (
+    tuple(range(81)),
+    tuple(80 - square for square in range(81)),
+)
+
+
+def _build_action_plane_direction_delta_table() -> tuple[int, ...]:
+    def direction_delta(from_square: int, to_square: int) -> int:
+        from_rank, from_file = divmod(from_square, 9)
+        to_rank, to_file = divmod(to_square, 9)
+        rank_delta = 0 if to_rank == from_rank else 1 if to_rank > from_rank else -1
+        file_delta = 0 if to_file == from_file else 1 if to_file > from_file else -1
+        return rank_delta * 9 + file_delta
+
+    return tuple(
+        direction_delta(from_square, to_square)
+        for from_square in range(81)
+        for to_square in range(81)
+    )
+
+
+_ACTION_PLANE_DIRECTION_DELTA_BY_RELATIVE_SQUARES = _build_action_plane_direction_delta_table()
 
 
 @dataclass(frozen=True)
@@ -1110,8 +1133,9 @@ def _push_self_play_move(board: ShogiBoard, move: _SelfPlayMove) -> None:
 
 
 def _cshogi_action_plane_policy_action_index(move: int, *, turn: int) -> int:
-    to_square = _cshogi_square_to_absolute_square(cshogi.move_to(move))
-    relative_to_square = _side_to_move_relative_square(to_square, turn)
+    relative_squares = _SIDE_TO_MOVE_RELATIVE_SQUARES[turn]
+    to_square = _CSHOGI_TO_ABSOLUTE_SQUARE[cshogi.move_to(move)]
+    relative_to_square = relative_squares[to_square]
     move_type = _cshogi_action_plane_policy_move_type(move, to_square=to_square, turn=turn)
     return relative_to_square * _ACTION_PLANE_MOVE_TYPE_COUNT + move_type
 
@@ -1124,12 +1148,15 @@ def _cached_cshogi_action_plane_policy_action_index(move: int, turn: int) -> int
 def _cshogi_action_plane_policy_move_type(move: int, *, to_square: int, turn: int) -> int:
     if cshogi.move_is_drop(move):
         return _ACTION_PLANE_DROP_MOVE_TYPE_OFFSET + cshogi.move_drop_hand_piece(move)
-    from_square = _cshogi_square_to_absolute_square(cshogi.move_from(move))
-    relative_from_square = _side_to_move_relative_square(from_square, turn)
-    relative_to_square = _side_to_move_relative_square(to_square, turn)
+    relative_squares = _SIDE_TO_MOVE_RELATIVE_SQUARES[turn]
+    from_square = _CSHOGI_TO_ABSOLUTE_SQUARE[cshogi.move_from(move)]
+    relative_from_square = relative_squares[from_square]
+    relative_to_square = relative_squares[to_square]
     delta = relative_to_square - relative_from_square
     if delta not in _ACTION_PLANE_KNIGHT_DELTAS:
-        delta = _action_plane_direction_delta(relative_from_square, relative_to_square)
+        delta = _ACTION_PLANE_DIRECTION_DELTA_BY_RELATIVE_SQUARES[
+            relative_from_square * 81 + relative_to_square
+        ]
     offset = _ACTION_PLANE_PROMOTE_MOVE_TYPE_OFFSET if cshogi.move_is_promotion(move) else 0
     return offset + _ACTION_PLANE_MOVE_TYPE_OFFSET_BY_DELTA[delta]
 
@@ -1238,7 +1265,7 @@ def _select_self_play_puct_child_index(
     parent_sqrt = max(1, node.visit_count) ** 0.5
     best_index: int | None = None
     best_score: float | None = None
-    best_move_key = ""
+    best_move_key: _SelfPlayMove | None = None
     child_moves = node.child_moves
     child_nodes = node.child_nodes
     child_visit_counts = node.child_visit_counts
@@ -1252,8 +1279,12 @@ def _select_self_play_puct_child_index(
         child_visit_count = child_visit_counts[index]
         child_value_mean = child_value_sums[index] / child_visit_count if child_visit_count else 0.0
         score = -child_value_mean + exploration_scale * child_priors[index] / (1 + child_visit_count)
-        move_key = str(child_moves[index])
-        if best_score is None or score > best_score or (score == best_score and move_key > best_move_key):
+        move_key = child_moves[index]
+        if (
+            best_score is None
+            or score > best_score
+            or (score == best_score and (best_move_key is None or move_key > best_move_key))
+        ):
             best_index = index
             best_score = score
             best_move_key = move_key
