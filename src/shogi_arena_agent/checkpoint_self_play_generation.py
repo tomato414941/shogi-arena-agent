@@ -421,7 +421,6 @@ class _SelfPlayMctsNode:
     visit_count: int = 0
     value_sum: float = 0.0
     pending: bool = False
-    pending_child_count: int = 0
     child_moves: tuple[_SelfPlayMove, ...] = ()
     child_usis: tuple[str, ...] = ()
     child_priors: tuple[float, ...] = ()
@@ -604,7 +603,7 @@ class _CheckpointSelfPlayMctsExecutor:
             )
             return None, True
 
-        _mark_pending_simulation(simulation, pending=True)
+        simulation.node.pending = True
         return _SelfPlayPendingSimulation(
             nodes=simulation.nodes,
             edge_indices=simulation.edge_indices,
@@ -684,7 +683,7 @@ class _CheckpointSelfPlayMctsExecutor:
                 state.model_call_count += 1
                 state.model_wall_time_sec += elapsed
                 updated_state_ids.add(state_id)
-            _mark_pending_simulation(simulation, pending=False)
+            simulation.node.pending = False
             expand_started_at = perf_counter()
             _expand_node_with_evaluation(simulation.node, simulation.legal_moves, priors)
             self._record_phase_time(state, search_stats, "expand", perf_counter() - expand_started_at)
@@ -1258,23 +1257,6 @@ def _backpropagate_path(
         parent.child_value_sums[index] = node.value_sum
 
 
-def _mark_pending_simulation(
-    simulation: _SelfPlaySelectedSimulation | _SelfPlayPendingSimulation,
-    *,
-    pending: bool,
-) -> None:
-    if simulation.node.pending == pending:
-        return
-    simulation.node.pending = pending
-    if not simulation.edge_indices:
-        return
-    parent = simulation.nodes[-2]
-    if pending:
-        parent.pending_child_count += 1
-    else:
-        parent.pending_child_count -= 1
-
-
 def _select_self_play_puct_child_index(
     node: _SelfPlayMctsNode,
     *,
@@ -1290,37 +1272,22 @@ def _select_self_play_puct_child_index(
     child_value_sums = node.child_value_sums
     child_priors = node.child_priors
     exploration_scale = c_puct * parent_sqrt
-    if node.pending_child_count:
-        for index in range(len(child_moves)):
-            child = child_nodes[index]
-            if child is not None and child.pending:
-                continue
-            child_visit_count = child_visit_counts[index]
-            child_value_mean = child_value_sums[index] / child_visit_count if child_visit_count else 0.0
-            score = -child_value_mean + exploration_scale * child_priors[index] / (1 + child_visit_count)
-            move_key = child_moves[index]
-            if (
-                best_score is None
-                or score > best_score
-                or (score == best_score and (best_move_key is None or move_key > best_move_key))
-            ):
-                best_index = index
-                best_score = score
-                best_move_key = move_key
-    else:
-        for index in range(len(child_moves)):
-            child_visit_count = child_visit_counts[index]
-            child_value_mean = child_value_sums[index] / child_visit_count if child_visit_count else 0.0
-            score = -child_value_mean + exploration_scale * child_priors[index] / (1 + child_visit_count)
-            move_key = child_moves[index]
-            if (
-                best_score is None
-                or score > best_score
-                or (score == best_score and (best_move_key is None or move_key > best_move_key))
-            ):
-                best_index = index
-                best_score = score
-                best_move_key = move_key
+    for index in range(len(child_moves)):
+        child = child_nodes[index]
+        if child is not None and child.pending:
+            continue
+        child_visit_count = child_visit_counts[index]
+        child_value_mean = child_value_sums[index] / child_visit_count if child_visit_count else 0.0
+        score = -child_value_mean + exploration_scale * child_priors[index] / (1 + child_visit_count)
+        move_key = child_moves[index]
+        if (
+            best_score is None
+            or score > best_score
+            or (score == best_score and (best_move_key is None or move_key > best_move_key))
+        ):
+            best_index = index
+            best_score = score
+            best_move_key = move_key
     return best_index
 
 
