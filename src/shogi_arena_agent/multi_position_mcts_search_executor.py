@@ -7,7 +7,7 @@ from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis
 from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, max_visit_move_selection_config
-from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator, UniformPolicyValueEvaluator
+from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluator, UniformPolicyValueEvaluator
 from shogi_arena_agent.mcts_performance import (
     MultiPositionMctsPerformance,
     MctsMovePerformance,
@@ -350,7 +350,7 @@ def _select_pending_simulation(root: MctsNode, board: ShogiBoard, *, c_puct: flo
     return SelectedSimulation(path=path, board=board, node=node)
 
 
-def _expand_node_with_evaluation(node: MctsNode, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:
+def _expand_node_with_evaluation(node: MctsNode, legal_moves: tuple[str, ...], priors: MovePriors) -> None:
     node.children = expanded_children(legal_moves, priors)
 
 

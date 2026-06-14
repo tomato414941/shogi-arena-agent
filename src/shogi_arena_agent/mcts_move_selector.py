@@ -5,7 +5,7 @@ from time import perf_counter
 
 from shogi_arena_agent.board_backend import ShogiBoard, copy_board, legal_move_usis
 from shogi_arena_agent.mcts_config import MctsConfig, MoveSelectionConfig, max_visit_move_selection_config
-from shogi_arena_agent.mcts_evaluator import PolicyValueEvaluator, UniformPolicyValueEvaluator
+from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluator, UniformPolicyValueEvaluator
 from shogi_arena_agent.mcts_performance import MctsMovePerformance, leaf_eval_batch_metrics
 from shogi_arena_agent.mcts_tree import (
     MctsNode,
@@ -177,7 +177,7 @@ class MctsSearchSession:
         self._expand_with_evaluation(node, legal_moves, priors)
         return max(-1.0, min(1.0, float(value)))
 
-    def _expand_with_evaluation(self, node: MctsNode, legal_moves: tuple[str, ...], priors: dict[str, float]) -> None:
+    def _expand_with_evaluation(self, node: MctsNode, legal_moves: tuple[str, ...], priors: MovePriors) -> None:
         node.children = expanded_children(legal_moves, priors)
 
     def _select_child(self, node: MctsNode) -> tuple[str, MctsNode] | None:

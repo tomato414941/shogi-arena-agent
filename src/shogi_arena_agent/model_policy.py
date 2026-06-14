@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from shogi_arena_agent.board_backend import ShogiBoard, legal_move_usis
-from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluationRequest
+from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluationRequest, aligned_prior_values
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiPosition, board_from_position
 
 
@@ -122,11 +122,9 @@ class ShogiMoveChoiceCheckpointEvaluator:
 
 
 def _best_prior_move(legal_moves: tuple[str, ...], priors: MovePriors) -> str:
-    if isinstance(priors, Mapping):
-        return max(legal_moves, key=lambda move: priors.get(move, 0.0))
-    if len(priors) != len(legal_moves):
-        raise ValueError("aligned move priors must match legal move count")
-    return legal_moves[max(range(len(legal_moves)), key=lambda index: float(priors[index]))]
+    prior_values = aligned_prior_values(legal_moves, priors, clamp_negative=False)
+    best_index = max(range(len(legal_moves)), key=lambda index: prior_values[index])
+    return legal_moves[best_index]
 
 
 def _position_evaluation_request(request: PolicyValueEvaluationRequest) -> PositionEvaluationRequest:

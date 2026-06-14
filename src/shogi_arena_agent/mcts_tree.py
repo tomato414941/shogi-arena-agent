@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from shogi_arena_agent.board_backend import ShogiBoard
-from shogi_arena_agent.mcts_evaluator import MovePriors
+from shogi_arena_agent.mcts_evaluator import MovePriors, normalized_prior_dict, normalized_prior_values
 from shogi_arena_agent.usi import UsiPosition
 
 
@@ -81,31 +80,12 @@ def position_moves(position: UsiPosition) -> tuple[str, ...]:
 
 
 def normalize_priors(legal_moves: tuple[str, ...], priors: MovePriors) -> dict[str, float]:
-    prior_values = _aligned_prior_values(legal_moves, priors)
-    positive_priors = {move: prior for move, prior in zip(legal_moves, prior_values, strict=True)}
-    total = sum(positive_priors.values())
-    if total <= 0.0:
-        uniform = 1.0 / len(legal_moves)
-        return {move: uniform for move in legal_moves}
-    return {move: prior / total for move, prior in positive_priors.items()}
+    return normalized_prior_dict(legal_moves, priors)
 
 
 def expanded_children(legal_moves: tuple[str, ...], priors: MovePriors) -> dict[str, MctsNode]:
-    prior_values = _aligned_prior_values(legal_moves, priors)
-    total = sum(prior_values)
-    if total <= 0.0:
-        uniform = 1.0 / len(legal_moves)
-        return {move: MctsNode(prior=uniform) for move in legal_moves}
-    inverse_total = 1.0 / total
-    return {move: MctsNode(prior=prior * inverse_total) for move, prior in zip(legal_moves, prior_values, strict=True)}
-
-
-def _aligned_prior_values(legal_moves: tuple[str, ...], priors: MovePriors) -> list[float]:
-    if isinstance(priors, Mapping):
-        return [max(0.0, float(priors.get(move, 0.0))) for move in legal_moves]
-    if len(priors) != len(legal_moves):
-        raise ValueError("aligned move priors must match legal move count")
-    return [max(0.0, float(prior)) for prior in priors]
+    prior_values = normalized_prior_values(legal_moves, priors)
+    return {move: MctsNode(prior=prior) for move, prior in zip(legal_moves, prior_values, strict=True)}
 
 
 def visit_count_policy_targets(root: MctsNode) -> dict[str, float]:

@@ -6,7 +6,7 @@ import queue
 import random
 import sys
 import traceback
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 from statistics import mean
@@ -26,7 +26,7 @@ from shogi_arena_agent.mcts_config import (
     MoveSelectionConfig,
     visit_sampling_move_selection_config,
 )
-from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluator
+from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluator, normalized_prior_values
 from shogi_arena_agent.mcts_performance import MctsMovePerformance, MultiPositionMctsPerformance, leaf_eval_batch_metrics
 from shogi_arena_agent.mcts_tree import position_ply
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
@@ -1226,19 +1226,7 @@ def _expand_node_with_evaluation(
 
 
 def _aligned_self_play_priors(legal_moves: _SelfPlayLegalMoves, priors: MovePriors) -> tuple[float, ...]:
-    if isinstance(priors, Mapping):
-        if len(legal_moves.usis) != len(legal_moves.moves):
-            raise ValueError("mapping priors require USI legal moves")
-        prior_values = [max(0.0, float(priors.get(move, 0.0))) for move in legal_moves.usis]
-        total = sum(prior_values)
-        if total <= 0.0:
-            uniform = 1.0 / len(legal_moves.moves)
-            return tuple(uniform for _move in legal_moves.moves)
-        inverse_total = 1.0 / total
-        return tuple(prior * inverse_total for prior in prior_values)
-    if len(priors) != len(legal_moves.moves):
-        raise ValueError("aligned move priors must match legal move count")
-    return tuple(float(prior) for prior in priors)
+    return normalized_prior_values(legal_moves.usis, priors, expected_count=len(legal_moves.moves))
 
 
 def _backpropagate_path(
