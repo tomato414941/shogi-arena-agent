@@ -75,6 +75,20 @@ class BatchCountingEvaluator:
         return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
 
 
+class AlignedPriorEvaluator:
+    def __init__(self, preferred_move: str) -> None:
+        self.preferred_move = preferred_move
+
+    def evaluate_batch(
+        self,
+        requests: Sequence[tuple[shogi.Board, tuple[str, ...]]],
+    ) -> list[tuple[tuple[float, ...], float]]:
+        return [
+            (tuple(1.0 if move == self.preferred_move else 0.0 for move in legal_moves), 0.0)
+            for _board, legal_moves in requests
+        ]
+
+
 class MctsMoveSelectorTest(unittest.TestCase):
     def test_returns_legal_move(self) -> None:
         move = MctsMoveSelector(config=MctsConfig(simulation_count=4)).select_move(UsiPosition())
@@ -92,6 +106,16 @@ class MctsMoveSelectorTest(unittest.TestCase):
             PriorOnlyEvaluator(preferred_move),
             config=MctsConfig(simulation_count=8),
         ).select_move(position)
+
+        self.assertEqual(move, preferred_move)
+
+    def test_aligned_policy_prior_guides_search(self) -> None:
+        preferred_move = "7g7f"
+
+        move = MctsMoveSelector(
+            AlignedPriorEvaluator(preferred_move),
+            config=MctsConfig(simulation_count=8),
+        ).select_move(UsiPosition())
 
         self.assertEqual(move, preferred_move)
 
@@ -211,6 +235,17 @@ class MctsMoveSelectorTest(unittest.TestCase):
         assert results[0].search_evidence is not None
         self.assertIsInstance(results[0].search_evidence["mcts_root_mean_value"], float)
         self.assertIn(2, evaluator.batch_sizes)
+
+    def test_multi_position_executor_accepts_aligned_priors(self) -> None:
+        preferred_move = "7g7f"
+        selector = MultiPositionMctsSearchExecutor(
+            AlignedPriorEvaluator(preferred_move),
+            config=MctsConfig(simulation_count=8, nn_leaf_eval_batch_limit=8),
+        )
+
+        result = selector.select_moves([UsiPosition()])[0]
+
+        self.assertEqual(result.move, preferred_move)
 
     def test_multi_position_executor_records_phase_timings(self) -> None:
         selector = MultiPositionMctsSearchExecutor(config=MctsConfig(simulation_count=4, nn_leaf_eval_batch_limit=8))
