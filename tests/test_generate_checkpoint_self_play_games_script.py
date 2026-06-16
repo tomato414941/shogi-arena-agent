@@ -133,6 +133,63 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(result.records), 2)
         self.assertEqual(callback_counts, [1, 2])
 
+    def test_script_writes_random_opening_start_positions(self) -> None:
+        module = _load_script_module()
+
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, _checkpoint: str, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_positions(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _sfen, legal_moves in requests]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+            stdout = io.StringIO()
+
+            with (
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(io.StringIO()),
+                patch.object(module, "ShogiMoveChoiceCheckpointEvaluator", FakeEvaluator),
+            ):
+                module.main(
+                    [
+                        "--checkpoint",
+                        "model.pt",
+                        "--games",
+                        "2",
+                        "--mcts-simulations",
+                        "1",
+                        "--mcts-nn-leaf-eval-batch-limit",
+                        "4",
+                        "--central-evaluator-batch-size-limit",
+                        "4",
+                        "--max-plies",
+                        "1",
+                        "--start-position-set",
+                        "random-legal-opening",
+                        "--start-position-seed",
+                        "7",
+                        "--opening-plies",
+                        "2",
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+
+            records = load_shogi_game_records_jsonl(output_path)
+            start_positions = [
+                json.loads(line)
+                for line in output_path.with_name("start_positions.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(len(start_positions), 2)
+        self.assertEqual(records[0].initial_position_sfen, start_positions[0]["sfen"])
+        self.assertEqual(records[1].initial_position_sfen, start_positions[1]["sfen"])
+        self.assertEqual(start_positions[0]["source"], "random-legal-opening")
+
     def test_single_game_self_play_batches_multiple_leaf_evaluations(self) -> None:
         class FakeEvaluator:
             @classmethod

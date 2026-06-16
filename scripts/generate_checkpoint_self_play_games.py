@@ -14,6 +14,11 @@ from shogi_arena_agent.checkpoint_self_play_generation import (
 from shogi_arena_agent.generated_game_artifacts import GeneratedGameArtifacts
 from shogi_arena_agent.mcts_config import visit_sampling_move_selection_config
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
+from shogi_arena_agent.start_positions import (
+    StartPosition,
+    random_legal_opening_start_positions,
+    save_start_positions_jsonl,
+)
 from shogi_arena_agent.usi import BOARD_BACKENDS
 
 STANDARD_MAX_PLIES = 320
@@ -40,6 +45,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--compile-model", action="store_true")
     parser.add_argument("--board-backend", choices=BOARD_BACKENDS, default="python-shogi")
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--start-position-set", choices=("startpos", "random-legal-opening"), default="startpos")
+    parser.add_argument("--start-position-seed", type=int)
+    parser.add_argument("--opening-plies", type=int, default=0)
     parser.add_argument("--move-selection-temperature", type=float, default=DEFAULT_MOVE_SELECTION_TEMPERATURE)
     parser.add_argument("--move-selection-temperature-plies", type=int, default=DEFAULT_MOVE_SELECTION_TEMPERATURE_PLIES)
     parser.add_argument("--progress-every-plies", type=int, default=0)
@@ -49,6 +57,8 @@ def main(argv: list[str] | None = None) -> None:
     _validate_args(parser, args)
 
     started_at = perf_counter()
+    start_positions = _start_positions_from_args(args)
+    _write_start_position_artifacts(args, start_positions)
     config = CheckpointSelfPlayConfig(
         checkpoint=args.checkpoint,
         checkpoint_id=args.checkpoint_id,
@@ -70,6 +80,7 @@ def main(argv: list[str] | None = None) -> None:
             temperature_plies=args.move_selection_temperature_plies,
         ),
         progress_every_plies=args.progress_every_plies,
+        start_positions=start_positions,
     )
     with GeneratedGameArtifacts(Path(args.out)) as artifacts:
         result = run_checkpoint_self_play_generation(
@@ -81,6 +92,23 @@ def main(argv: list[str] | None = None) -> None:
     summary = summarize_checkpoint_self_play_records(result.records, wall_time_sec=perf_counter() - started_at)
     summary["central_evaluator_performance"] = result.central_evaluator_performance
     print(json.dumps(summary, indent=2))
+
+
+def _start_positions_from_args(args: argparse.Namespace) -> tuple[StartPosition, ...]:
+    if args.start_position_set == "startpos":
+        return ()
+    return random_legal_opening_start_positions(
+        count=args.games,
+        opening_plies=args.opening_plies,
+        seed=args.start_position_seed,
+        board_backend=args.board_backend,
+    )
+
+
+def _write_start_position_artifacts(args: argparse.Namespace, start_positions: tuple[StartPosition, ...]) -> None:
+    if not start_positions:
+        return
+    save_start_positions_jsonl(start_positions, Path(args.out).with_name("start_positions.jsonl"))
 
 
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -100,6 +128,10 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error("--central-evaluator-flush-timeout-sec must be non-negative")
     if args.progress_every_plies < 0:
         parser.error("--progress-every-plies must be non-negative")
+    if args.opening_plies < 0:
+        parser.error("--opening-plies must be non-negative")
+    if args.start_position_set == "random-legal-opening" and args.start_position_seed is None:
+        parser.error("--start-position-seed is required when --start-position-set random-legal-opening")
     if args.max_plies <= 0:
         parser.error("--max-plies must be positive")
     if args.move_selection_temperature <= 0.0:
