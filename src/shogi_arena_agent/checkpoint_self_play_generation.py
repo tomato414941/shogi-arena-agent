@@ -775,6 +775,7 @@ class _SelfPlayMctsSearchState:
             move=_select_self_play_final_move_at_ply(self.root, self.ply, self.move_selection, self.rng),
             policy_targets=_self_play_visit_count_policy_targets(self.root),
             search_evidence={
+                "mcts_root_child_priors": _self_play_root_child_priors(self.root),
                 "mcts_root_child_visit_counts": _self_play_root_child_visit_counts(self.root),
                 "mcts_root_mean_value": self.root.value_mean,
             },
@@ -1377,6 +1378,13 @@ def _self_play_root_child_visit_counts(root: _SelfPlayMctsNode) -> dict[str, int
     return {
         _self_play_child_usi(root, index): visit_count
         for index, visit_count in enumerate(root.child_visit_counts)
+    }
+
+
+def _self_play_root_child_priors(root: _SelfPlayMctsNode) -> dict[str, float]:
+    return {
+        _self_play_child_usi(root, index): prior
+        for index, prior in enumerate(root.child_priors)
     }
 
 

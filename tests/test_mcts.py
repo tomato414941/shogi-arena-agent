@@ -132,6 +132,10 @@ class MctsMoveSelectorTest(unittest.TestCase):
         visit_counts = policy.last_search_evidence["mcts_root_child_visit_counts"]
         self.assertIsInstance(visit_counts, dict)
         self.assertIn("7g7f", visit_counts)
+        priors = policy.last_search_evidence["mcts_root_child_priors"]
+        self.assertIsInstance(priors, dict)
+        self.assertIn("7g7f", priors)
+        self.assertAlmostEqual(sum(priors.values()), 1.0)
         self.assertIsInstance(policy.last_search_evidence["mcts_root_mean_value"], float)
         self.assertGreaterEqual(policy.last_search_evidence["mcts_root_mean_value"], -1.0)
         self.assertLessEqual(policy.last_search_evidence["mcts_root_mean_value"], 1.0)

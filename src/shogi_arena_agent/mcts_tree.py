@@ -99,6 +99,10 @@ def root_child_visit_counts(root: MctsNode) -> dict[str, int]:
     return {move: child.visit_count for move, child in root.children.items()}
 
 
+def root_child_priors(root: MctsNode) -> dict[str, float]:
+    return {move: child.prior for move, child in root.children.items()}
+
+
 def root_mean_value(root: MctsNode) -> float:
     return root.value_mean
 

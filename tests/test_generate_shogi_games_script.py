@@ -290,6 +290,10 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
             records[0].transitions[0].decision_telemetry.search_evidence,
         )
         self.assertIn(
+            "mcts_root_child_priors",
+            records[0].transitions[0].decision_telemetry.search_evidence,
+        )
+        self.assertIn(
             "mcts_root_mean_value",
             records[0].transitions[0].decision_telemetry.search_evidence,
         )

@@ -92,6 +92,7 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertIsNotNone(records[0].transitions[0].decision_telemetry.search_evidence)
         assert records[0].transitions[0].decision_telemetry.search_evidence is not None
         self.assertIn("mcts_root_child_visit_counts", records[0].transitions[0].decision_telemetry.search_evidence)
+        self.assertIn("mcts_root_child_priors", records[0].transitions[0].decision_telemetry.search_evidence)
         self.assertIn("mcts_root_mean_value", records[0].transitions[0].decision_telemetry.search_evidence)
         self.assertEqual(summary["game_count"], 4)
         self.assertIn("multi_position_search_performance", summary)
@@ -216,6 +217,7 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertTrue(seen_leaf_without_usis)
         transition = result.records[0].transitions[0]
         self.assertEqual(sum(transition.decision_telemetry.search_evidence["mcts_root_child_visit_counts"].values()), 8)
+        self.assertAlmostEqual(sum(transition.decision_telemetry.search_evidence["mcts_root_child_priors"].values()), 1.0)
 
     def test_process_worker_error_includes_traceback(self) -> None:
         class FailingEvaluator:

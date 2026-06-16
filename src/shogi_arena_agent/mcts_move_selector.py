@@ -13,6 +13,7 @@ from shogi_arena_agent.mcts_tree import (
     SelectedSimulation,
     expanded_children,
     position_moves,
+    root_child_priors,
     root_child_visit_counts,
     root_mean_value,
     select_final_move,
@@ -76,6 +77,7 @@ class MctsSearchSession:
 
         self.last_policy_targets = visit_count_policy_targets(root)
         self.last_search_evidence = {
+            "mcts_root_child_priors": root_child_priors(root),
             "mcts_root_child_visit_counts": root_child_visit_counts(root),
             "mcts_root_mean_value": root_mean_value(root),
         }
