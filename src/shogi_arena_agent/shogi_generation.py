@@ -10,7 +10,7 @@ from statistics import mean
 from time import perf_counter
 from typing import Any
 
-from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis
+from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, terminal_status
 from shogi_arena_agent.multi_position_mcts_search_executor import MultiPositionMctsSearchExecutor
 from shogi_arena_agent.mcts_config import (
     MctsConfig,
@@ -262,8 +262,9 @@ class _ActiveGeneratedGame:
             self._finalize_rewards()
             return True
         self.board.push_usi(move)
-        done = self.board.is_game_over()
-        self.winner = "black" if done and not board_is_black_turn(self.board) else "white" if done else None
+        terminal = terminal_status(self.board)
+        done = terminal is not None
+        self.winner = terminal.winner if terminal is not None else None
         self.transitions.append(
             ShogiTransitionRecord(
                 ply=len(self.transitions),
@@ -278,7 +279,7 @@ class _ActiveGeneratedGame:
             )
         )
         if done:
-            self.end_reason = "game_over"
+            self.end_reason = terminal.end_reason
             return True
         return False
 

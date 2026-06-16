@@ -15,7 +15,14 @@ from time import perf_counter
 import cshogi
 import shogi
 
-from shogi_arena_agent.board_backend import ShogiBoard, board_is_black_turn, board_turn_name, copy_board, legal_move_usis
+from shogi_arena_agent.board_backend import (
+    ShogiBoard,
+    board_is_black_turn,
+    board_turn_name,
+    copy_board,
+    legal_move_usis,
+    terminal_status,
+)
 from shogi_arena_agent.checkpoint_self_play_evaluator import (
     CentralPolicyValueEvaluator,
     ProcessCentralPolicyValueEvaluator,
@@ -866,8 +873,9 @@ class _ActiveCheckpointSelfPlayGame:
             self._finalize_rewards()
             return True
         self.board.push_usi(move)
-        done = self.board.is_game_over()
-        self.winner = "black" if done and not board_is_black_turn(self.board) else "white" if done else None
+        terminal = terminal_status(self.board)
+        done = terminal is not None
+        self.winner = terminal.winner if terminal is not None else None
         self.transitions.append(
             ShogiTransitionRecord(
                 ply=len(self.transitions),
@@ -882,7 +890,7 @@ class _ActiveCheckpointSelfPlayGame:
             )
         )
         if done:
-            self.end_reason = "game_over"
+            self.end_reason = terminal.end_reason
             return True
         return False
 

@@ -14,7 +14,7 @@ from shogi_arena_agent.shogi_game import (
     save_shogi_game_records_jsonl,
     shogi_game_record_to_json,
 )
-from shogi_arena_agent.start_positions import random_legal_opening_start_positions
+from shogi_arena_agent.start_positions import StartPosition, random_legal_opening_start_positions
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, UsiPosition
 from shogi_arena_agent.usi_process import UsiGoResult
 
@@ -62,6 +62,17 @@ class InfoLinePlayer:
             bestmove="7g7f",
             info_lines=("info multipv 1 score cp 100 pv 7g7f",),
         )
+
+
+class SequencePlayer:
+    def __init__(self, moves: tuple[str, ...]) -> None:
+        self.moves = list(moves)
+
+    def position(self, command: str) -> None:
+        pass
+
+    def go(self) -> str:
+        return self.moves.pop(0)
 
 
 class ShogiGameTest(unittest.TestCase):
@@ -144,6 +155,30 @@ class ShogiGameTest(unittest.TestCase):
         self.assertEqual(result.end_reason, "resign")
         self.assertEqual(result.transitions, ())
         self.assertEqual(result.winner, "white")
+
+    def test_game_stops_on_cshogi_repetition_draw(self) -> None:
+        start_position = StartPosition(
+            id="bare-kings",
+            usi_position=UsiPosition(command="position sfen 4k4/9/9/9/9/9/9/9/4K4 b - 1"),
+            sfen="4k4/9/9/9/9/9/9/9/4K4 b - 1",
+        )
+
+        result = play_shogi_game(
+            black=SequencePlayer(("5i5h", "5h5i")),
+            white=SequencePlayer(("5a5b", "5b5a")),
+            board_backend="cshogi",
+            start_position=start_position,
+            max_plies=320,
+        )
+
+        self.assertEqual(result.end_reason, "repetition_draw")
+        self.assertIsNone(result.winner)
+        self.assertEqual(
+            tuple(transition.action_usi for transition in result.transitions),
+            ("5i5h", "5a5b", "5h5i", "5b5a"),
+        )
+        self.assertTrue(result.transitions[-1].done)
+        self.assertEqual(result.transitions[-1].reward, 0.0)
 
     def test_shogi_game_records_jsonl_round_trip(self) -> None:
         results = (play_shogi_game(max_plies=1), play_shogi_game(max_plies=2))

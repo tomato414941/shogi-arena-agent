@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis
+from shogi_arena_agent.board_backend import board_is_black_turn, board_turn_name, legal_move_usis, terminal_status
 from shogi_arena_agent.start_positions import StartPosition, startpos
 from shogi_arena_agent.usi import RESIGN_MOVE, UsiEngine, board_from_position
 from shogi_arena_agent.usi_process import UsiGoResult
@@ -180,8 +180,9 @@ def play_shogi_game(
             )
 
         board.push_usi(move)
-        done = board.is_game_over()
-        winner = "black" if done and not board_is_black_turn(board) else "white" if done else None
+        terminal = terminal_status(board)
+        done = terminal is not None
+        winner = terminal.winner if terminal is not None else None
         transitions.append(
             ShogiTransitionRecord(
                 ply=ply,
@@ -202,7 +203,7 @@ def play_shogi_game(
                 white_actor=white_spec,
                 initial_position_sfen=initial_position_sfen,
                 transitions=tuple(transitions),
-                end_reason="game_over",
+                end_reason=terminal.end_reason,
                 winner=winner,
             )
 
