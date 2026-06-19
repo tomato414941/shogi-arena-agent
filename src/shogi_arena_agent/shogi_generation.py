@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -25,6 +26,7 @@ from shogi_arena_agent.player_cli import (
     build_static_player,
     player_context,
 )
+from shogi_arena_agent.random_streams import child_random
 from shogi_arena_agent.shogi_game import (
     ShogiActorSpec,
     ShogiDecisionTelemetry,
@@ -60,7 +62,7 @@ def generate_shogi_games(
     progress_callback: GenerationProgressCallback | None = None,
 ) -> tuple[ShogiGameRecord, ...]:
     _validate_start_position_count(config)
-    if config.concurrent_games_per_process > 1:
+    if config.concurrent_games_per_process > 1 or _should_use_multi_position_checkpoint_mcts(config):
         return _play_multi_position_checkpoint_mcts_games(
             config,
             checkpoint_evaluator_cls=checkpoint_evaluator_cls,
@@ -168,6 +170,8 @@ def _play_multi_position_checkpoint_mcts_games(
         )
         for index in range(config.games)
     ]
+    black_rngs = _game_random_streams(config.black.seed, config.games, side="black")
+    white_rngs = _game_random_streams(config.white.seed, config.games, side="white")
     remaining = set(range(config.games))
     started_at = perf_counter()
     for ply in range(config.max_plies):
@@ -175,11 +179,14 @@ def _play_multi_position_checkpoint_mcts_games(
             break
         black_indexes = [index for index in sorted(remaining) if board_is_black_turn(games[index].board)]
         white_indexes = [index for index in sorted(remaining) if not board_is_black_turn(games[index].board)]
-        for indexes, selector in ((black_indexes, black_selector), (white_indexes, white_selector)):
+        for indexes, selector, rngs in (
+            (black_indexes, black_selector, black_rngs),
+            (white_indexes, white_selector, white_rngs),
+        ):
             for offset in range(0, len(indexes), config.concurrent_games_per_process):
                 batch_indexes = indexes[offset : offset + config.concurrent_games_per_process]
                 positions = [UsiPosition(games[index].position_command()) for index in batch_indexes]
-                results = selector.select_moves(positions)
+                results = selector.select_moves(positions, rngs=[rngs[index] for index in batch_indexes])
                 multi_position_search_performance = _performance_payload(selector.last_multi_position_search_performance)
                 for game_index, result in zip(batch_indexes, results, strict=True):
                     telemetry = ShogiDecisionTelemetry(
@@ -203,6 +210,20 @@ def _play_multi_position_checkpoint_mcts_games(
             if index not in completed_indexes:
                 record_callback(record)
     return records
+
+
+def _should_use_multi_position_checkpoint_mcts(config: ShogiGenerationConfig) -> bool:
+    return all(
+        isinstance(player, CheckpointPolicyPlayerSpec)
+        and player.move_selector == "mcts"
+        and player.mcts_move_time_limit_sec is None
+        and not player.mcts_root_reuse
+        for player in (config.black, config.white)
+    )
+
+
+def _game_random_streams(seed: int | None, games: int, *, side: str) -> tuple[random.Random, ...]:
+    return tuple(child_random(seed, side, game_index) for game_index in range(games))
 
 
 def _player_context(

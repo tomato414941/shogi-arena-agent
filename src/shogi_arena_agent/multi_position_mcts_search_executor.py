@@ -57,7 +57,15 @@ class MultiPositionMctsSearchExecutor:
         self._rng = random.Random(self.move_selection.seed)
         self.last_multi_position_search_performance: MultiPositionMctsPerformance | None = None
 
-    def select_moves(self, positions: Sequence[UsiPosition]) -> list[MctsMoveResult]:
+    def select_moves(
+        self,
+        positions: Sequence[UsiPosition],
+        *,
+        rngs: Sequence[random.Random] | None = None,
+    ) -> list[MctsMoveResult]:
+        if rngs is not None and len(rngs) != len(positions):
+            raise ValueError("rngs must contain one random stream per position")
+        position_rngs = rngs if rngs is not None else [self._rng] * len(positions)
         started_at = perf_counter()
         search_stats = _MultiPositionSearchStats(
             position_count=len(positions),
@@ -69,10 +77,10 @@ class MultiPositionMctsSearchExecutor:
                 self.config.simulation_count,
                 board_backend=self.config.board_backend,
                 move_selection=self.move_selection,
-                rng=self._rng,
+                rng=rng,
                 leaf_eval_batch_size_limit=self.config.nn_leaf_eval_batch_limit,
             )
-            for position in positions
+            for position, rng in zip(positions, position_rngs, strict=True)
         ]
         for state in states:
             search_stats.add_phase_times(state.phase_wall_time_sec)

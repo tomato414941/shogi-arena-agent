@@ -37,6 +37,7 @@ from shogi_arena_agent.mcts_evaluator import MovePriors, PolicyValueEvaluator, n
 from shogi_arena_agent.mcts_performance import MctsMovePerformance, MultiPositionMctsPerformance, leaf_eval_batch_metrics
 from shogi_arena_agent.mcts_tree import position_ply
 from shogi_arena_agent.model_policy import ShogiMoveChoiceCheckpointEvaluator
+from shogi_arena_agent.random_streams import child_random, child_seed
 from shogi_arena_agent.shogi_game import (
     ShogiActorSpec,
     ShogiDecisionTelemetry,
@@ -368,6 +369,7 @@ def _generate_checkpoint_self_play_games_with_selector(
         )
         for index in range(config.games)
     ]
+    game_rngs = _game_random_streams(selector.move_selection.seed, config.games)
     remaining = set(range(config.games))
     started_at = perf_counter()
     for ply in range(config.max_plies):
@@ -379,7 +381,7 @@ def _generate_checkpoint_self_play_games_with_selector(
             for offset in range(0, len(indexes), config.concurrent_games_per_process):
                 batch_indexes = indexes[offset : offset + config.concurrent_games_per_process]
                 positions = [UsiPosition(games[index].position_command()) for index in batch_indexes]
-                results = selector.select_moves(positions)
+                results = selector.select_moves(positions, rngs=[game_rngs[index] for index in batch_indexes])
                 multi_position_search_performance = _performance_payload(selector.last_multi_position_search_performance)
                 for game_index, result in zip(batch_indexes, results, strict=True):
                     telemetry = ShogiDecisionTelemetry(
@@ -507,7 +509,15 @@ class _CheckpointSelfPlayMctsExecutor:
         self._rng = random.Random(self.move_selection.seed)
         self.last_multi_position_search_performance: MultiPositionMctsPerformance | None = None
 
-    def select_moves(self, positions: Sequence[UsiPosition]) -> list[_CheckpointSelfPlayMctsMoveResult]:
+    def select_moves(
+        self,
+        positions: Sequence[UsiPosition],
+        *,
+        rngs: Sequence[random.Random] | None = None,
+    ) -> list[_CheckpointSelfPlayMctsMoveResult]:
+        if rngs is not None and len(rngs) != len(positions):
+            raise ValueError("rngs must contain one random stream per position")
+        position_rngs = rngs if rngs is not None else [self._rng] * len(positions)
         started_at = perf_counter()
         search_stats = _SelfPlayMctsSearchStats(
             position_count=len(positions),
@@ -519,11 +529,11 @@ class _CheckpointSelfPlayMctsExecutor:
                 self.config.simulation_count,
                 board_backend=self.config.board_backend,
                 move_selection=self.move_selection,
-                rng=self._rng,
+                rng=rng,
                 leaf_eval_batch_size_limit=self.config.nn_leaf_eval_batch_limit,
                 use_action_indices=self.use_action_indices,
             )
-            for position in positions
+            for position, rng in zip(positions, position_rngs, strict=True)
         ]
         for state in states:
             search_stats.add_phase_times(state.phase_wall_time_sec)
@@ -1037,8 +1047,12 @@ def _worker_move_selection(move_selection: MoveSelectionConfig, worker_index: in
         mode=move_selection.mode,
         temperature=move_selection.temperature,
         temperature_plies=move_selection.temperature_plies,
-        seed=move_selection.seed + worker_index,
+        seed=child_seed(move_selection.seed, "worker", worker_index),
     )
+
+
+def _game_random_streams(seed: int | None, games: int) -> tuple[random.Random, ...]:
+    return tuple(child_random(seed, "game", game_index) for game_index in range(games))
 
 
 def _start_position_for_game(config: CheckpointSelfPlayConfig, game_index: int) -> StartPosition | None:

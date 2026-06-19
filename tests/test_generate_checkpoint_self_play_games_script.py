@@ -133,6 +133,36 @@ class GenerateCheckpointSelfPlayGamesScriptTest(unittest.TestCase):
         self.assertEqual(len(result.records), 2)
         self.assertEqual(callback_counts, [1, 2])
 
+    def test_concurrent_one_uses_independent_game_random_streams(self) -> None:
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, _checkpoint: str, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_positions(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _sfen, legal_moves in requests]
+
+        result = run_checkpoint_self_play_generation(
+            CheckpointSelfPlayConfig(
+                checkpoint="model.pt",
+                games=4,
+                self_play_worker_processes=1,
+                concurrent_games_per_process=1,
+                max_plies=1,
+                mcts_simulations=8,
+                nn_leaf_eval_batch_limit=8,
+                central_evaluator_batch_size_limit=8,
+                central_evaluator_flush_timeout_sec=0.05,
+                device="cpu",
+                board_backend="python-shogi",
+                move_selection=visit_sampling_move_selection_config(seed=123),
+            ),
+            checkpoint_evaluator_cls=FakeEvaluator,
+        )
+
+        first_moves = [record.transitions[0].action_usi for record in result.records]
+        self.assertGreater(len(set(first_moves)), 1)
+
     def test_script_writes_random_opening_start_positions(self) -> None:
         module = _load_script_module()
 

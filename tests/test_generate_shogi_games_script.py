@@ -19,14 +19,19 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
     def test_checkpoint_fixed_side_writes_game_records(self) -> None:
         module = _load_script_module()
 
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, *_args: object, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_batch(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
+
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "games.jsonl"
             stdout = io.StringIO()
 
-            with patch(
-                "shogi_arena_agent.player_cli._load_move_selector",
-                return_value=DeterministicLegalMovePolicy(),
-            ), contextlib.redirect_stdout(stdout):
+            with patch.object(module, "ShogiMoveChoiceCheckpointEvaluator", FakeEvaluator), contextlib.redirect_stdout(stdout):
                 module.main(
                     [
                         "--black-kind",
@@ -172,10 +177,14 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                             "checkpoint",
                             "--black-checkpoint",
                             "black.pt",
+                            "--black-move-selector",
+                            "direct",
                             "--white-kind",
                             "checkpoint",
                             "--white-checkpoint",
                             "white.pt",
+                            "--white-move-selector",
+                            "direct",
                             "--games",
                             "3",
                             "--max-plies",
@@ -207,10 +216,14 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
                             "checkpoint",
                             "--black-checkpoint",
                             "black.pt",
+                            "--black-move-selector",
+                            "direct",
                             "--white-kind",
                             "checkpoint",
                             "--white-checkpoint",
                             "white.pt",
+                            "--white-move-selector",
+                            "direct",
                             "--games",
                             "2",
                             "--max-plies",
@@ -224,6 +237,54 @@ class GenerateShogiGamesScriptTest(unittest.TestCase):
         black_factory, white_factory = factories
         self.assertEqual([len(session.positions) for session in black_factory.sessions], [2, 2])
         self.assertEqual([len(session.positions) for session in white_factory.sessions], [1, 1])
+
+    def test_checkpoint_mcts_concurrent_one_uses_independent_game_random_streams(self) -> None:
+        module = _load_script_module()
+
+        class FakeEvaluator:
+            @classmethod
+            def from_checkpoint(cls, *_args: object, **_kwargs: object) -> "FakeEvaluator":
+                return cls()
+
+            def evaluate_batch(self, requests):
+                return [({move: 1.0 for move in legal_moves}, 0.0) for _board, legal_moves in requests]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "games.jsonl"
+
+            with patch.object(module, "ShogiMoveChoiceCheckpointEvaluator", FakeEvaluator):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    module.main(
+                        [
+                            "--black-kind",
+                            "checkpoint",
+                            "--black-checkpoint",
+                            "black.pt",
+                            "--black-mcts-simulations",
+                            "8",
+                            "--white-kind",
+                            "checkpoint",
+                            "--white-checkpoint",
+                            "white.pt",
+                            "--white-mcts-simulations",
+                            "8",
+                            "--games",
+                            "4",
+                            "--concurrent-games-per-process",
+                            "1",
+                            "--seed",
+                            "123",
+                            "--max-plies",
+                            "1",
+                            "--out",
+                            str(output_path),
+                        ]
+                    )
+
+            records = load_shogi_game_records_jsonl(output_path)
+
+        first_moves = [record.transitions[0].action_usi for record in records]
+        self.assertGreater(len(set(first_moves)), 1)
 
     def test_parallel_checkpoint_mcts_batches_across_positions(self) -> None:
         module = _load_script_module()
